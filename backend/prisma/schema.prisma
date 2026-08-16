@@ -1,0 +1,529 @@
+// Mirrors db/schema.sql, table for table, enum for enum. That file remains
+// the source of truth for anything Prisma can't express — namely:
+//
+//   - every CHECK constraint (chk_quantity_not_exceeded, chk_quantity_not_negative,
+//     price >= 0, quantity_total > 0, end_at > start_at, sale_end > sale_start,
+//     total_amount >= 0, unit_price/subtotal >= 0, discount_value > 0,
+//     valid_until > valid_from, max_uses IS NULL OR uses_count <= max_uses)
+//   - the case-insensitive unique index on lower(users.email) (idx_users_email_lower)
+//   - the two capacity triggers: fn_reserve_ticket_capacity (BEFORE INSERT ON
+//     tickets) and fn_release_ticket_capacity (AFTER UPDATE OF status ON tickets)
+//
+// None of the above must ever be (re)generated from this file. They are added
+// by hand to a Prisma migration created with `prisma migrate dev --create-only`,
+// copied verbatim from db/schema.sql section 13. See CLAUDE.md "Critical
+// business rules" and "Working in this repo".
+//
+// Enum values below use @map so the underlying Postgres labels stay exactly
+// what the hand-written trigger/SQL literals expect (e.g. 'valid', 'pending_payment'),
+// while the Prisma Client API surface stays idiomatic PascalCase/UPPER_SNAKE.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================
+// 1. TYPES ÉNUMÉRÉS
+// ============================================================
+
+enum MemberRole {
+  OWNER        @map("owner")
+  CO_ORGANIZER @map("co_organizer")
+  SELLER       @map("seller")
+  CONTROLLER   @map("controller")
+  ACCOUNTANT   @map("accountant")
+
+  @@map("member_role")
+}
+
+enum MemberStatus {
+  PENDING   @map("pending")
+  ACTIVE    @map("active")
+  SUSPENDED @map("suspended")
+
+  @@map("member_status")
+}
+
+enum EventStatus {
+  DRAFT     @map("draft")
+  PUBLISHED @map("published")
+  CANCELLED @map("cancelled")
+  COMPLETED @map("completed")
+
+  @@map("event_status")
+}
+
+enum TicketCategory {
+  STANDARD   @map("standard")
+  VIP        @map("vip")
+  EARLY_BIRD @map("early_bird")
+  PRESALE    @map("presale")
+  GROUP      @map("group")
+
+  @@map("ticket_category")
+}
+
+enum TicketAccessMode {
+  PUBLIC            @map("public")
+  PRESALE_WHITELIST @map("presale_whitelist")
+  PRIVATE_LINK      @map("private_link")
+
+  @@map("ticket_access_mode")
+}
+
+enum TicketStatus {
+  PENDING_PAYMENT @map("pending_payment")
+  VALID           @map("valid")
+  USED            @map("used")
+  CANCELLED       @map("cancelled")
+  REFUNDED        @map("refunded")
+
+  @@map("ticket_status")
+}
+
+enum OrderStatus {
+  PENDING   @map("pending")
+  PAID      @map("paid")
+  CANCELLED @map("cancelled")
+  REFUNDED  @map("refunded")
+  EXPIRED   @map("expired")
+
+  @@map("order_status")
+}
+
+enum PaymentStatus {
+  PENDING @map("pending")
+  SUCCESS @map("success")
+  FAILED  @map("failed")
+
+  @@map("payment_status")
+}
+
+enum PaymentProvider {
+  CINETPAY @map("cinetpay")
+  PAYDUNYA @map("paydunya")
+  INTOUCH  @map("intouch")
+  STRIPE   @map("stripe")
+
+  @@map("payment_provider")
+}
+
+enum DiscountType {
+  PERCENT @map("percent")
+  FIXED   @map("fixed")
+
+  @@map("discount_type")
+}
+
+enum ScanResult {
+  SUCCESS       @map("success")
+  ALREADY_USED  @map("already_used")
+  INVALID       @map("invalid")
+  EXPIRED_EVENT @map("expired_event")
+
+  @@map("scan_result")
+}
+
+enum NotificationChannel {
+  EMAIL @map("email")
+  SMS   @map("sms")
+  PUSH  @map("push")
+
+  @@map("notification_channel")
+}
+
+enum NotificationStatus {
+  PENDING @map("pending")
+  SENT    @map("sent")
+  FAILED  @map("failed")
+
+  @@map("notification_status")
+}
+
+enum SubscriptionPlan {
+  STARTER    @map("starter")
+  PRO        @map("pro")
+  ENTERPRISE @map("enterprise")
+
+  @@map("subscription_plan")
+}
+
+enum SubscriptionStatus {
+  ACTIVE    @map("active")
+  PAST_DUE  @map("past_due")
+  CANCELLED @map("cancelled")
+
+  @@map("subscription_status")
+}
+
+// ============================================================
+// 2. UTILISATEURS
+// ============================================================
+
+model User {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email        String   @db.Text
+  phone        String?  @db.VarChar(20)
+  passwordHash String   @map("password_hash") @db.Text
+  fullName     String   @map("full_name") @db.VarChar(150)
+  isSuperAdmin Boolean  @default(false) @map("is_super_admin")
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  ownedOrganizations Organization[]       @relation("OrganizationOwner")
+  memberships        OrganizationMember[] @relation("MemberUser")
+  invitedMemberships OrganizationMember[] @relation("MemberInviter")
+  createdEvents      Event[]              @relation("EventCreator")
+  ordersAsBuyer      Order[]              @relation("OrderBuyer")
+  ordersAsSeller     Order[]              @relation("OrderSeller")
+  scans              Scan[]               @relation("ScanController")
+  notifications      Notification[]
+  auditLogs          AuditLog[]           @relation("AuditActor")
+
+  // Case-insensitive uniqueness enforced by idx_users_email_lower
+  // (UNIQUE INDEX ... (lower(email))) in db/schema.sql — a functional index,
+  // not representable in this schema and must not be dropped by `prisma migrate`.
+  @@map("users")
+}
+
+// ============================================================
+// 3. ORGANISATIONS (comptes organisateur) & ÉQUIPE
+// ============================================================
+
+model Organization {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name         String   @db.VarChar(200)
+  slug         String   @unique @db.VarChar(100)
+  ownerUserId  String   @map("owner_user_id") @db.Uuid
+  contactEmail String?  @map("contact_email") @db.Text
+  contactPhone String?  @map("contact_phone") @db.VarChar(20)
+  isVerified   Boolean  @default(false) @map("is_verified")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  owner         User                 @relation("OrganizationOwner", fields: [ownerUserId], references: [id], onDelete: Restrict)
+  members       OrganizationMember[]
+  events        Event[]
+  promoCodes    PromoCode[]
+  subscriptions Subscription[]
+  auditLogs     AuditLog[]
+
+  @@map("organizations")
+}
+
+// Table de jonction : chaque employé (co-organisateur, vendeur, contrôleur,
+// comptable) est un user rattaché à une organisation avec un rôle précis.
+model OrganizationMember {
+  id             String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String       @map("organization_id") @db.Uuid
+  userId         String       @map("user_id") @db.Uuid
+  role           MemberRole
+  status         MemberStatus @default(PENDING)
+  invitedBy      String?      @map("invited_by") @db.Uuid
+  createdAt      DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  organization  Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user          User         @relation("MemberUser", fields: [userId], references: [id], onDelete: Cascade)
+  invitedByUser User?        @relation("MemberInviter", fields: [invitedBy], references: [id], onDelete: NoAction)
+
+  @@unique([organizationId, userId])
+  @@index([organizationId], map: "idx_org_members_org")
+  @@map("organization_members")
+}
+
+// ============================================================
+// 4. ÉVÈNEMENTS
+// ============================================================
+
+model Event {
+  id             String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String      @map("organization_id") @db.Uuid
+  name           String      @db.VarChar(200)
+  slug           String      @unique @db.VarChar(150)
+  description    String?     @db.Text
+  venueName      String?     @map("venue_name") @db.VarChar(200)
+  address        String?     @db.Text
+  category       String?     @db.VarChar(50)
+  status         EventStatus @default(DRAFT)
+  startAt        DateTime    @map("start_at") @db.Timestamptz(6)
+  endAt          DateTime    @map("end_at") @db.Timestamptz(6)
+  createdBy      String      @map("created_by") @db.Uuid
+  createdAt      DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime    @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  organization  Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdByUser User         @relation("EventCreator", fields: [createdBy], references: [id], onDelete: NoAction)
+  ticketTypes   TicketType[]
+  promoCodes    PromoCode[]
+  orders        Order[]
+
+  // CHECK (end_at > start_at) — see db/schema.sql, not enforced by Prisma
+  @@index([organizationId, status], map: "idx_events_org_status")
+  @@map("events")
+}
+
+// ============================================================
+// 5. TYPES DE BILLETS (standard, vip, early bird, PRÉVENTE, groupe)
+// ============================================================
+
+model TicketType {
+  id            String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  eventId       String           @map("event_id") @db.Uuid
+  name          String           @db.VarChar(150)
+  category      TicketCategory   @default(STANDARD)
+  price         Decimal          @db.Decimal(12, 2)
+  currency      String           @default("XOF") @db.Char(3)
+  quantityTotal Int              @map("quantity_total")
+  quantitySold  Int              @default(0) @map("quantity_sold")
+  maxPerOrder   Int              @default(10) @map("max_per_order")
+  accessMode    TicketAccessMode @default(PUBLIC) @map("access_mode")
+  saleStart     DateTime         @map("sale_start") @db.Timestamptz(6)
+  saleEnd       DateTime         @map("sale_end") @db.Timestamptz(6)
+  createdAt     DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  event      Event                 @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  whitelist  TicketTypeWhitelist[]
+  orderItems OrderItem[]
+  tickets    Ticket[]
+
+  // CHECK (price >= 0), CHECK (quantity_total > 0), CHECK (sale_end > sale_start),
+  // CONSTRAINT chk_quantity_not_exceeded CHECK (quantity_sold <= quantity_total),
+  // CONSTRAINT chk_quantity_not_negative CHECK (quantity_sold >= 0)
+  // — see db/schema.sql section 5, not enforced by Prisma.
+  @@index([eventId], map: "idx_ticket_types_event")
+  @@map("ticket_types")
+}
+
+// Liste blanche pour les préventes réservées à des invités (accès privé)
+model TicketTypeWhitelist {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  ticketTypeId String    @map("ticket_type_id") @db.Uuid
+  email        String    @db.Text
+  usedAt       DateTime? @map("used_at") @db.Timestamptz(6)
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  ticketType TicketType @relation(fields: [ticketTypeId], references: [id], onDelete: Cascade)
+
+  @@unique([ticketTypeId, email])
+  @@map("ticket_type_whitelist")
+}
+
+// ============================================================
+// 6. CODES PROMO
+// ============================================================
+
+model PromoCode {
+  id             String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String       @map("organization_id") @db.Uuid
+  eventId        String?      @map("event_id") @db.Uuid
+  code           String       @db.VarChar(50)
+  discountType   DiscountType @map("discount_type")
+  discountValue  Decimal      @map("discount_value") @db.Decimal(12, 2)
+  maxUses        Int?         @map("max_uses")
+  usesCount      Int          @default(0) @map("uses_count")
+  validFrom      DateTime     @map("valid_from") @db.Timestamptz(6)
+  validUntil     DateTime     @map("valid_until") @db.Timestamptz(6)
+  createdAt      DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  event        Event?       @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  orders       Order[]
+
+  // CHECK (discount_value > 0), CHECK (valid_until > valid_from),
+  // CHECK (max_uses IS NULL OR uses_count <= max_uses) — see db/schema.sql, not enforced by Prisma.
+  @@unique([organizationId, code])
+  @@map("promo_codes")
+}
+
+// ============================================================
+// 7. COMMANDES, LIGNES DE COMMANDE, BILLETS
+// ============================================================
+
+model Order {
+  id          String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  eventId     String      @map("event_id") @db.Uuid
+  buyerUserId String?     @map("buyer_user_id") @db.Uuid
+  buyerEmail  String      @map("buyer_email") @db.Text
+  buyerPhone  String?     @map("buyer_phone") @db.VarChar(20)
+  sellerId    String?     @map("seller_id") @db.Uuid
+  promoCodeId String?     @map("promo_code_id") @db.Uuid
+  status      OrderStatus @default(PENDING)
+  totalAmount Decimal     @map("total_amount") @db.Decimal(12, 2)
+  currency    String      @default("XOF") @db.Char(3)
+  expiresAt   DateTime    @map("expires_at") @db.Timestamptz(6)
+  createdAt   DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime    @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  event         Event          @relation(fields: [eventId], references: [id], onDelete: NoAction)
+  buyer         User?          @relation("OrderBuyer", fields: [buyerUserId], references: [id], onDelete: NoAction)
+  seller        User?          @relation("OrderSeller", fields: [sellerId], references: [id], onDelete: NoAction)
+  promoCode     PromoCode?     @relation(fields: [promoCodeId], references: [id], onDelete: NoAction)
+  items         OrderItem[]
+  payments      Payment[]
+  notifications Notification[]
+
+  // CHECK (total_amount >= 0) — see db/schema.sql, not enforced by Prisma.
+  @@index([eventId], map: "idx_orders_event")
+  @@index([status, expiresAt], map: "idx_orders_status_expires")
+  @@map("orders")
+}
+
+model OrderItem {
+  id           String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orderId      String  @map("order_id") @db.Uuid
+  ticketTypeId String  @map("ticket_type_id") @db.Uuid
+  quantity     Int
+  unitPrice    Decimal @map("unit_price") @db.Decimal(12, 2)
+  subtotal     Decimal @db.Decimal(12, 2)
+
+  order      Order      @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  ticketType TicketType @relation(fields: [ticketTypeId], references: [id], onDelete: NoAction)
+  tickets    Ticket[]
+
+  // CHECK (quantity > 0), CHECK (unit_price >= 0), CHECK (subtotal >= 0)
+  // — see db/schema.sql, not enforced by Prisma.
+  @@map("order_items")
+}
+
+// Un billet = une ligne. Un order_item de quantité N génère N lignes ici.
+// C'est l'insertion dans cette table qui déclenche fn_reserve_ticket_capacity
+// (voir db/schema.sql section 13) — jamais reproduite en code applicatif.
+model Ticket {
+  id           String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orderItemId  String       @map("order_item_id") @db.Uuid
+  ticketTypeId String       @map("ticket_type_id") @db.Uuid
+  qrToken      String       @unique @map("qr_token") @db.Text
+  holderName   String?      @map("holder_name") @db.VarChar(150)
+  holderEmail  String?      @map("holder_email") @db.Text
+  isNominative Boolean      @default(false) @map("is_nominative")
+  status       TicketStatus @default(PENDING_PAYMENT)
+  usedAt       DateTime?    @map("used_at") @db.Timestamptz(6)
+  createdAt    DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  orderItem  OrderItem  @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+  ticketType TicketType @relation(fields: [ticketTypeId], references: [id], onDelete: NoAction)
+  scans      Scan[]
+
+  @@index([ticketTypeId], map: "idx_tickets_ticket_type")
+  @@index([status], map: "idx_tickets_status")
+  @@map("tickets")
+}
+
+// ============================================================
+// 8. PAIEMENTS
+// ============================================================
+
+model Payment {
+  id                    String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orderId               String          @map("order_id") @db.Uuid
+  provider              PaymentProvider
+  providerTransactionId String?         @map("provider_transaction_id") @db.Text
+  amount                Decimal         @db.Decimal(12, 2)
+  currency              String          @default("XOF") @db.Char(3)
+  status                PaymentStatus   @default(PENDING)
+  rawResponse           Json?           @map("raw_response") @db.JsonB
+  createdAt             DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  // CHECK (amount >= 0) — see db/schema.sql, not enforced by Prisma.
+  @@index([orderId], map: "idx_payments_order")
+  @@map("payments")
+}
+
+// ============================================================
+// 9. SCANS (contrôle d'accès)
+// ============================================================
+
+model Scan {
+  id               String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  ticketId         String     @map("ticket_id") @db.Uuid
+  controllerUserId String     @map("controller_user_id") @db.Uuid
+  gateOrZone       String?    @map("gate_or_zone") @db.VarChar(100)
+  deviceId         String?    @map("device_id") @db.VarChar(100)
+  result           ScanResult
+  scannedAt        DateTime   @default(now()) @map("scanned_at") @db.Timestamptz(6)
+  syncedAt         DateTime?  @map("synced_at") @db.Timestamptz(6)
+
+  ticket     Ticket @relation(fields: [ticketId], references: [id], onDelete: NoAction)
+  controller User   @relation("ScanController", fields: [controllerUserId], references: [id], onDelete: NoAction)
+
+  @@index([ticketId], map: "idx_scans_ticket")
+  @@map("scans")
+}
+
+// ============================================================
+// 10. NOTIFICATIONS
+// ============================================================
+
+model Notification {
+  id        String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String?             @map("user_id") @db.Uuid
+  orderId   String?             @map("order_id") @db.Uuid
+  channel   NotificationChannel
+  type      String              @db.VarChar(50)
+  status    NotificationStatus  @default(PENDING)
+  sentAt    DateTime?           @map("sent_at") @db.Timestamptz(6)
+  createdAt DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user  User?  @relation(fields: [userId], references: [id], onDelete: NoAction)
+  order Order? @relation(fields: [orderId], references: [id], onDelete: NoAction)
+
+  @@map("notifications")
+}
+
+// ============================================================
+// 11. ABONNEMENT SAAS DE L'ORGANISATEUR
+// ============================================================
+
+model Subscription {
+  id                 String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId     String             @map("organization_id") @db.Uuid
+  plan               SubscriptionPlan
+  status             SubscriptionStatus @default(ACTIVE)
+  currentPeriodStart DateTime           @map("current_period_start") @db.Timestamptz(6)
+  currentPeriodEnd   DateTime           @map("current_period_end") @db.Timestamptz(6)
+  price              Decimal            @db.Decimal(12, 2)
+  createdAt          DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("subscriptions")
+}
+
+// ============================================================
+// 12. AUDIT LOG
+// ============================================================
+
+model AuditLog {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  actorUserId    String?  @map("actor_user_id") @db.Uuid
+  organizationId String?  @map("organization_id") @db.Uuid
+  action         String   @db.VarChar(100)
+  entityType     String   @map("entity_type") @db.VarChar(50)
+  entityId       String?  @map("entity_id") @db.Uuid
+  metadata       Json?    @db.JsonB
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  actor        User?         @relation("AuditActor", fields: [actorUserId], references: [id], onDelete: NoAction)
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: NoAction)
+
+  @@map("audit_logs")
+}
+
+// ============================================================
+// 13-15. ANTI-SURVENTE, ANTI-FRAUDE SCAN, EXPIRATION PANIERS
+// ============================================================
+// Entirely absent from this file on purpose:
+//   - fn_reserve_ticket_capacity / trg_reserve_ticket_capacity (BEFORE INSERT ON tickets)
+//   - fn_release_ticket_capacity / trg_release_ticket_capacity (AFTER UPDATE OF status ON tickets)
+// Copy them verbatim from db/schema.sql section 13 into a hand-written
+// migration. Application code must insert Ticket rows through Prisma
+// normally (the trigger does the reservation) and must scan tickets via a
+// single raw conditional UPDATE ($queryRaw), never findUnique + update.
