@@ -51,16 +51,23 @@ CREATE TYPE subscription_status AS ENUM ('active', 'past_due', 'cancelled');
 -- 2. UTILISATEURS
 -- ============================================================
 
+-- password_hash est nullable : un compte créé via Google OAuth n'a pas de
+-- mot de passe local. google_id est nullable pour le cas inverse (compte
+-- classique jamais lié à Google). Le CHECK ci-dessous garantit qu'il reste
+-- toujours au moins une méthode d'authentification utilisable.
 CREATE TABLE users (
   id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   email           TEXT NOT NULL,
   phone           VARCHAR(20),
-  password_hash   TEXT NOT NULL,
+  password_hash   TEXT,
+  google_id       TEXT UNIQUE,
   full_name       VARCHAR(150) NOT NULL,
   is_super_admin  BOOLEAN NOT NULL DEFAULT FALSE,
   is_active       BOOLEAN NOT NULL DEFAULT TRUE,
   created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+  updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+
+  CONSTRAINT chk_users_auth_method CHECK (password_hash IS NOT NULL OR google_id IS NOT NULL)
 );
 
 CREATE UNIQUE INDEX idx_users_email_lower ON users (lower(email));

@@ -5,11 +5,11 @@ import { validateSync } from 'class-validator';
 class EnvironmentVariables {
   @IsString()
   @IsNotEmpty()
-  DATABASE_URL: string;
+  DATABASE_URL!: string;
 
   @IsString()
   @IsNotEmpty()
-  JWT_SECRET: string;
+  JWT_SECRET!: string;
 
   @IsOptional()
   @IsNumberString()

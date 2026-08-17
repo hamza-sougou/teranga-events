@@ -4,7 +4,8 @@
 //   - every CHECK constraint (chk_quantity_not_exceeded, chk_quantity_not_negative,
 //     price >= 0, quantity_total > 0, end_at > start_at, sale_end > sale_start,
 //     total_amount >= 0, unit_price/subtotal >= 0, discount_value > 0,
-//     valid_until > valid_from, max_uses IS NULL OR uses_count <= max_uses)
+//     valid_until > valid_from, max_uses IS NULL OR uses_count <= max_uses,
+//     chk_users_auth_method: password_hash IS NOT NULL OR google_id IS NOT NULL)
 //   - the case-insensitive unique index on lower(users.email) (idx_users_email_lower)
 //   - the two capacity triggers: fn_reserve_ticket_capacity (BEFORE INSERT ON
 //     tickets) and fn_release_ticket_capacity (AFTER UPDATE OF status ON tickets)
@@ -169,7 +170,8 @@ model User {
   id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   email        String   @db.Text
   phone        String?  @db.VarChar(20)
-  passwordHash String   @map("password_hash") @db.Text
+  passwordHash String?  @map("password_hash") @db.Text
+  googleId     String?  @unique @map("google_id") @db.Text
   fullName     String   @map("full_name") @db.VarChar(150)
   isSuperAdmin Boolean  @default(false) @map("is_super_admin")
   isActive     Boolean  @default(true) @map("is_active")
@@ -189,6 +191,8 @@ model User {
   // Case-insensitive uniqueness enforced by idx_users_email_lower
   // (UNIQUE INDEX ... (lower(email))) in db/schema.sql — a functional index,
   // not representable in this schema and must not be dropped by `prisma migrate`.
+  // CHECK (password_hash IS NOT NULL OR google_id IS NOT NULL) — chk_users_auth_method,
+  // not enforced by Prisma either.
   @@map("users")
 }
 
