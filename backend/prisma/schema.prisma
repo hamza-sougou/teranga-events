@@ -109,7 +109,6 @@ enum PaymentProvider {
   CINETPAY @map("cinetpay")
   PAYDUNYA @map("paydunya")
   INTOUCH  @map("intouch")
-  STRIPE   @map("stripe")
 
   @@map("payment_provider")
 }

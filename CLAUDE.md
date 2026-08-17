@@ -21,7 +21,7 @@ There is no build system, package manager, or test suite yet. When code is added
 | Cache / queues           | Redis                                                                                                                         | —                      |
 | Web frontend             | Next.js + Tailwind CSS                                                                                                        | —                      |
 | Mobile (organizer, scan) | Flutter                                                                                                                       | React Native           |
-| Payments                 | CinetPay or PayDunya (+ Stripe for international cards)                                                                       | IntouchPay             |
+| Payments                 | CinetPay (cards + Wave/Orange Money/Free Money via a single API) — Stripe doesn't support Senegal-registered businesses, so it's not an option | PayDunya (backup, not active yet) |
 | File storage             | S3 / Cloudflare R2                                                                                                            | —                      |
 | Hosting                  | DigitalOcean / Render                                                                                                         | AWS (Cape Town region) |
 | ORM                      | Prisma — **must keep hand-written SQL triggers in manual migrations**, do not let the ORM regenerate the schema and drop them | Drizzle                |

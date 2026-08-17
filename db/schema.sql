@@ -32,7 +32,7 @@ CREATE TYPE order_status AS ENUM ('pending', 'paid', 'cancelled', 'refunded', 'e
 
 CREATE TYPE payment_status AS ENUM ('pending', 'success', 'failed');
 
-CREATE TYPE payment_provider AS ENUM ('cinetpay', 'paydunya', 'intouch', 'stripe');
+CREATE TYPE payment_provider AS ENUM ('cinetpay', 'paydunya', 'intouch');
 
 CREATE TYPE discount_type AS ENUM ('percent', 'fixed');
 
