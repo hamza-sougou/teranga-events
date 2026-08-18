@@ -58,7 +58,7 @@ Branche `main`, à jour avec `origin/main`. 5 commits de modules jusqu'ici :
   - Implémenter le flux panier → checkout → paiement CinetPay → confirmation.
   - Webhook CinetPay avec re-vérification server-to-server (jamais confiance dans le payload direct) + idempotence.
   - Job planifié d'expiration des paniers (`orders-expiration.job.ts` n'a qu'un squelette `@Cron` vide actuellement).
-  - **Nettoyage à faire à ce moment-là** : supprimer `src/payments/providers/stripe.provider.ts` (stub mort toujours référencé par `payments.module.ts`) et la dépendance npm `"stripe": "^16.12.0"` toujours présente dans `backend/package.json`.
+  - ~~Nettoyage Stripe~~ — fait le 2026-08-18 : `stripe.provider.ts` supprimé, retiré de `payments.module.ts`/`payments.service.ts`, dépendance npm `stripe` désinstallée. Plus aucune référence dans le code.
 - **Tickets** (`src/tickets/`) — génération QR code (dépendance `qrcode` déjà installée, non utilisée), téléchargement/consultation du billet.
 - **Scan** (`src/scan/`) — endpoint de scan anti-fraude (`UPDATE` conditionnel unique, jamais `SELECT` + `UPDATE`), pensé offline-first côté mobile.
 - **Notifications** (`src/notifications/`) — email/SMS (canaux `email.channel.ts`/`sms.channel.ts` vides), confirmation d'achat, rappel, annulation. Nécessaire aussi pour prévenir les invités du module teams (actuellement sans notification, limite MVP assumée).
