@@ -64,6 +64,8 @@ describe('Anti-oversell — fn_reserve_ticket_capacity (concurrency)', () => {
       data: {
         eventId,
         buyerEmail: 'buyer@example.com',
+        subtotalAmount: 100,
+        serviceFeeAmount: 0,
         totalAmount: 100,
         expiresAt: new Date(now.getTime() + 15 * 60 * 1000),
       },

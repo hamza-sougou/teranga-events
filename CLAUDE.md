@@ -21,7 +21,7 @@ There is no build system, package manager, or test suite yet. When code is added
 | Cache / queues           | Redis                                                                                                                         | —                      |
 | Web frontend             | Next.js + Tailwind CSS                                                                                                        | —                      |
 | Mobile (organizer, scan) | Flutter                                                                                                                       | React Native           |
-| Payments                 | CinetPay (cards + Wave/Orange Money/Free Money via a single API) — Stripe doesn't support Senegal-registered businesses, so it's not an option | PayDunya (backup, not active yet) |
+| Payments                 | PayDunya (cards + Wave/Orange Money/Free Money/Djamo via a single API, PAR flow) — Stripe doesn't support Senegal-registered businesses; CinetPay's registration never got validated (they require a revenue history and live website, neither in place yet) | — (`cinetpay` kept as a reserve enum value in the DB, unused) |
 | File storage             | S3 / Cloudflare R2                                                                                                            | —                      |
 | Hosting                  | DigitalOcean / Render                                                                                                         | AWS (Cape Town region) |
 | ORM                      | Prisma — **must keep hand-written SQL triggers in manual migrations**, do not let the ORM regenerate the schema and drop them | Drizzle                |
@@ -59,6 +59,7 @@ These are load-bearing invariants from [docs/SPEC.md](docs/SPEC.md#4-règles-mé
   ```
   Zero rows returned means the ticket was already used/invalid and the scan is rejected. This atomicity is what makes it safe for two door staff to scan the same ticket simultaneously. In Prisma, this means `$queryRaw`, never `ticket.update()` preceded by a separate `findUnique`.
 - **Presales**: a `TicketType` with `category = 'presale'` has a `sale_start`/`sale_end` window and an `access_mode` of either `presale_whitelist` (via the `ticket_type_whitelist` table) or `public`.
+- **Organizer payout timing**: a payout is only triggered after an event has ended — never in real time, never on a fixed weekly schedule. Reason: if the event is cancelled or gets refunds before it's over, no money has been sent to the organizer yet, avoiding after-the-fact reclaims. One `payouts` row per event (`UNIQUE (event_id)`), `amount_due` = sum of `subtotal_amount` across the event's paid orders, sent via PayDunya's Déboursement (PUSH) API to the organization's `payout_phone_number`. See [docs/SPEC.md §6](docs/SPEC.md#6-reversement-aux-organisateurs-payout).
 
 ## Development workflow
 

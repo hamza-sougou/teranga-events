@@ -5,7 +5,9 @@
 //     price >= 0, quantity_total > 0, end_at > start_at, sale_end > sale_start,
 //     total_amount >= 0, unit_price/subtotal >= 0, discount_value > 0,
 //     valid_until > valid_from, max_uses IS NULL OR uses_count <= max_uses,
-//     chk_users_auth_method: password_hash IS NOT NULL OR google_id IS NOT NULL)
+//     chk_users_auth_method: password_hash IS NOT NULL OR google_id IS NOT NULL,
+//     chk_orders_total_equals_parts: total_amount = subtotal_amount + service_fee_amount,
+//     subtotal_amount/service_fee_amount/amount_due >= 0)
 //   - the case-insensitive unique index on lower(users.email) (idx_users_email_lower)
 //   - the two capacity triggers: fn_reserve_ticket_capacity (BEFORE INSERT ON
 //     tickets) and fn_release_ticket_capacity (AFTER UPDATE OF status ON tickets)
@@ -161,6 +163,15 @@ enum SubscriptionStatus {
   @@map("subscription_status")
 }
 
+enum PayoutStatus {
+  PENDING    @map("pending")
+  PROCESSING @map("processing")
+  PAID       @map("paid")
+  FAILED     @map("failed")
+
+  @@map("payout_status")
+}
+
 // ============================================================
 // 2. UTILISATEURS
 // ============================================================
@@ -207,6 +218,7 @@ model Organization {
   contactEmail String?  @map("contact_email") @db.Text
   contactPhone String?  @map("contact_phone") @db.VarChar(20)
   isVerified   Boolean  @default(false) @map("is_verified")
+  payoutPhoneNumber String? @map("payout_phone_number") @db.VarChar(20)
   createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt    DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
@@ -216,6 +228,7 @@ model Organization {
   promoCodes    PromoCode[]
   subscriptions Subscription[]
   auditLogs     AuditLog[]
+  payouts       Payout[]
 
   @@map("organizations")
 }
@@ -265,6 +278,7 @@ model Event {
   ticketTypes   TicketType[]
   promoCodes    PromoCode[]
   orders        Order[]
+  payout        Payout?
 
   // CHECK (end_at > start_at) — see db/schema.sql, not enforced by Prisma
   @@index([organizationId, status], map: "idx_events_org_status")
@@ -357,6 +371,11 @@ model Order {
   sellerId    String?     @map("seller_id") @db.Uuid
   promoCodeId String?     @map("promo_code_id") @db.Uuid
   status      OrderStatus @default(PENDING)
+  // Part organisateur et commission Zen Events (SPEC.md 5.5/5.6) ; totalAmount
+  // reste le montant facturé au client et doit toujours égaler leur somme
+  // (CHECK chk_orders_total_equals_parts, voir db/schema.sql, non enforced ici).
+  subtotalAmount   Decimal @map("subtotal_amount") @db.Decimal(12, 2)
+  serviceFeeAmount Decimal @map("service_fee_amount") @db.Decimal(12, 2)
   totalAmount Decimal     @map("total_amount") @db.Decimal(12, 2)
   currency    String      @default("XOF") @db.Char(3)
   expiresAt   DateTime    @map("expires_at") @db.Timestamptz(6)
@@ -438,6 +457,32 @@ model Payment {
   // CHECK (amount >= 0) — see db/schema.sql, not enforced by Prisma.
   @@index([orderId], map: "idx_payments_order")
   @@map("payments")
+}
+
+// ============================================================
+// 8B. REVERSEMENTS AUX ORGANISATEURS (PAYOUTS)
+// ============================================================
+// Un reversement par évènement, déclenché seulement après sa fin —
+// voir docs/SPEC.md section 6 et db/schema.sql section 8B.
+model Payout {
+  id                    String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId        String       @map("organization_id") @db.Uuid
+  eventId               String       @unique @map("event_id") @db.Uuid
+  amountDue             Decimal      @map("amount_due") @db.Decimal(12, 2)
+  amountPaid            Decimal?     @map("amount_paid") @db.Decimal(12, 2)
+  status                PayoutStatus @default(PENDING)
+  providerTransactionId String?      @map("provider_transaction_id") @db.Text
+  rawResponse           Json?        @map("raw_response") @db.JsonB
+  triggeredAt           DateTime?    @map("triggered_at") @db.Timestamptz(6)
+  createdAt             DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  event        Event        @relation(fields: [eventId], references: [id], onDelete: Restrict)
+
+  // CHECK (amount_due >= 0) — see db/schema.sql, not enforced by Prisma.
+  @@index([organizationId], map: "idx_payouts_organization")
+  @@index([status], map: "idx_payouts_status")
+  @@map("payouts")
 }
 
 // ============================================================

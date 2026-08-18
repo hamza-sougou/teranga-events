@@ -46,6 +46,10 @@ CREATE TYPE subscription_plan AS ENUM ('starter', 'pro', 'enterprise');
 
 CREATE TYPE subscription_status AS ENUM ('active', 'past_due', 'cancelled');
 
+-- Reversement (payout) vers l'organisateur, après la fin de l'évènement —
+-- voir section 8B pour la règle métier complète.
+CREATE TYPE payout_status AS ENUM ('pending', 'processing', 'paid', 'failed');
+
 
 -- ============================================================
 -- 2. UTILISATEURS
@@ -85,6 +89,7 @@ CREATE TABLE organizations (
   contact_email     TEXT,
   contact_phone     VARCHAR(20),
   is_verified       BOOLEAN NOT NULL DEFAULT FALSE, -- KYC organisateur
+  payout_phone_number VARCHAR(20), -- numéro mobile money pour le reversement PayDunya (API Déboursement, section 8B)
   created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at        TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -210,11 +215,19 @@ CREATE TABLE orders (
   seller_id         UUID REFERENCES users(id),           -- vendeur terrain, si vente assistée
   promo_code_id     UUID REFERENCES promo_codes(id),
   status            order_status NOT NULL DEFAULT 'pending',
+  -- Part organisateur (= somme des order_items, prix fixé par l'organisateur)
+  -- et commission Zen Events (incluant le tampon de frais PayDunya) — voir
+  -- SPEC.md section 5.5/5.6. total_amount reste le montant réellement
+  -- facturé au client et doit toujours égaler la somme des deux.
+  subtotal_amount    NUMERIC(12,2) NOT NULL CHECK (subtotal_amount >= 0),
+  service_fee_amount NUMERIC(12,2) NOT NULL CHECK (service_fee_amount >= 0),
   total_amount      NUMERIC(12,2) NOT NULL CHECK (total_amount >= 0),
   currency          CHAR(3) NOT NULL DEFAULT 'XOF',
   expires_at        TIMESTAMPTZ NOT NULL,  -- fin de la réservation panier (ex: +15 min)
   created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at        TIMESTAMPTZ NOT NULL DEFAULT now()
+  updated_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+
+  CONSTRAINT chk_orders_total_equals_parts CHECK (total_amount = subtotal_amount + service_fee_amount)
 );
 
 CREATE INDEX idx_orders_event ON orders (event_id);
@@ -268,6 +281,36 @@ CREATE TABLE payments (
 );
 
 CREATE INDEX idx_payments_order ON payments (order_id);
+
+
+-- ============================================================
+-- 8B. REVERSEMENTS AUX ORGANISATEURS (PAYOUTS)
+-- ============================================================
+-- Un reversement par évènement, déclenché uniquement une fois l'évènement
+-- terminé (jamais en temps réel ni sur une base périodique — voir
+-- SPEC.md section 6). amount_due = somme des subtotal_amount des commandes
+-- payées de l'évènement. UNIQUE (event_id) empêche par construction un
+-- double déboursement pour le même évènement, même en cas de double
+-- déclenchement concurrent du job (même logique de garde-fou DB que
+-- l'anti-survente).
+
+CREATE TABLE payouts (
+  id                      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  organization_id         UUID NOT NULL REFERENCES organizations(id) ON DELETE RESTRICT,
+  event_id                UUID NOT NULL REFERENCES events(id) ON DELETE RESTRICT,
+  amount_due              NUMERIC(12,2) NOT NULL CHECK (amount_due >= 0),
+  amount_paid             NUMERIC(12,2),
+  status                  payout_status NOT NULL DEFAULT 'pending',
+  provider_transaction_id TEXT,          -- référence du déboursement PayDunya (API PUSH)
+  raw_response            JSONB,
+  triggered_at            TIMESTAMPTZ,   -- horodatage de l'appel à l'API Déboursement
+  created_at              TIMESTAMPTZ NOT NULL DEFAULT now(),
+
+  UNIQUE (event_id)
+);
+
+CREATE INDEX idx_payouts_organization ON payouts (organization_id);
+CREATE INDEX idx_payouts_status ON payouts (status);
 
 
 -- ============================================================

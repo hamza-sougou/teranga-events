@@ -15,5 +15,13 @@ export default () => ({
     clientSecret: process.env.GOOGLE_CLIENT_SECRET,
     callbackUrl: process.env.GOOGLE_CALLBACK_URL,
   },
+  paydunya: {
+    masterKey: process.env.PAYDUNYA_MASTER_KEY,
+    privateKey: process.env.PAYDUNYA_PRIVATE_KEY,
+    publicKey: process.env.PAYDUNYA_PUBLIC_KEY,
+    token: process.env.PAYDUNYA_TOKEN,
+    mode: process.env.PAYDUNYA_MODE ?? 'test',
+    callbackUrl: process.env.PAYDUNYA_CALLBACK_URL,
+  },
   frontendUrl: process.env.FRONTEND_URL,
 });
