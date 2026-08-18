@@ -1,5 +1,6 @@
 import { randomUUID, createHash } from 'crypto';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { Test, TestingModule } from '@nestjs/testing';
 import { EventStatus } from '@prisma/client';
 import request from 'supertest';
@@ -10,10 +11,6 @@ import { TicketTypesService } from '../src/ticket-types/ticket-types.service';
 import { PaydunyaProvider, ConfirmInvoiceResult } from '../src/payments/providers/paydunya.provider';
 import { PrismaService } from '../src/prisma/prisma.service';
 
-// PAYDUNYA_MASTER_KEY is "" in this test environment (backend/.env) — the
-// IPN hash is sha512(masterKey), see docs/MODULE_PAIEMENT_SPEC.md §3.
-const VALID_HASH = createHash('sha512').update('').digest('hex');
-
 describe('PayDunya IPN webhook (e2e)', () => {
   let app: INestApplication;
   let authService: AuthService;
@@ -21,6 +18,7 @@ describe('PayDunya IPN webhook (e2e)', () => {
   let ticketTypesService: TicketTypesService;
   let paydunyaProvider: PaydunyaProvider;
   let prisma: PrismaService;
+  let validHash: string;
   const createdUserEmails: string[] = [];
 
   beforeAll(async () => {
@@ -37,6 +35,14 @@ describe('PayDunya IPN webhook (e2e)', () => {
     ticketTypesService = moduleFixture.get(TicketTypesService);
     paydunyaProvider = moduleFixture.get(PaydunyaProvider);
     prisma = moduleFixture.get(PrismaService);
+
+    // The IPN hash is sha512(masterKey) — docs/MODULE_PAIEMENT_SPEC.md §3.
+    // Read via ConfigService (the same source PaymentsService uses) instead
+    // of hardcoding a value, so this test doesn't drift out of sync with
+    // whatever backend/.env's PAYDUNYA_MASTER_KEY actually is.
+    const configService = moduleFixture.get(ConfigService);
+    const masterKey = configService.get<string>('paydunya.masterKey') ?? '';
+    validHash = createHash('sha512').update(masterKey).digest('hex');
   });
 
   afterEach(() => {
@@ -148,7 +154,7 @@ describe('PayDunya IPN webhook (e2e)', () => {
 
     await request(app.getHttpServer())
       .post('/payments/webhooks/paydunya')
-      .send(ipnBody(VALID_HASH, token))
+      .send(ipnBody(validHash, token))
       .expect(200);
 
     let refreshedOrder = await prisma.order.findUniqueOrThrow({ where: { id: order.id } });
@@ -160,7 +166,7 @@ describe('PayDunya IPN webhook (e2e)', () => {
     // second confirm() call, no double side effects.
     await request(app.getHttpServer())
       .post('/payments/webhooks/paydunya')
-      .send(ipnBody(VALID_HASH, token))
+      .send(ipnBody(validHash, token))
       .expect(200);
 
     expect(confirmSpy).toHaveBeenCalledTimes(1);
@@ -178,7 +184,7 @@ describe('PayDunya IPN webhook (e2e)', () => {
 
     await request(app.getHttpServer())
       .post('/payments/webhooks/paydunya')
-      .send(ipnBody(VALID_HASH, token))
+      .send(ipnBody(validHash, token))
       .expect(200);
 
     const refreshedOrder = await prisma.order.findUniqueOrThrow({ where: { id: order.id } });
@@ -205,7 +211,7 @@ describe('PayDunya IPN webhook (e2e)', () => {
 
     await request(app.getHttpServer())
       .post('/payments/webhooks/paydunya')
-      .send(ipnBody(VALID_HASH, token))
+      .send(ipnBody(validHash, token))
       .expect(200);
 
     const refreshedOrder = await prisma.order.findUniqueOrThrow({ where: { id: order.id } });
@@ -226,7 +232,7 @@ describe('PayDunya IPN webhook (e2e)', () => {
       .mockResolvedValue(completedConfirmResult(Number(order.totalAmount), order.id));
 
     const fire = () =>
-      request(app.getHttpServer()).post('/payments/webhooks/paydunya').send(ipnBody(VALID_HASH, token));
+      request(app.getHttpServer()).post('/payments/webhooks/paydunya').send(ipnBody(validHash, token));
 
     const results = await Promise.all([fire(), fire()]);
     expect(results.every((res) => res.status === 200)).toBe(true);
