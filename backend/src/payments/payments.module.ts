@@ -4,8 +4,10 @@ import { PaymentsService } from './payments.service';
 import { CinetpayProvider } from './providers/cinetpay.provider';
 import { PaydunyaProvider } from './providers/paydunya.provider';
 import { PricingService } from './pricing/pricing.service';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
+  imports: [NotificationsModule],
   controllers: [PaymentsController],
   providers: [PaymentsService, CinetpayProvider, PaydunyaProvider, PricingService],
   exports: [PaymentsService, PaydunyaProvider, PricingService],

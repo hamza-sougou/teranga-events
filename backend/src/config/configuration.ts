@@ -23,5 +23,12 @@ export default () => ({
     mode: process.env.PAYDUNYA_MODE ?? 'test',
     callbackUrl: process.env.PAYDUNYA_CALLBACK_URL,
   },
+  smtp: {
+    host: process.env.SMTP_HOST,
+    port: parseInt(process.env.SMTP_PORT ?? '587', 10),
+    user: process.env.SMTP_USER,
+    password: process.env.SMTP_PASSWORD,
+    fromEmail: process.env.SMTP_FROM_EMAIL,
+  },
   frontendUrl: process.env.FRONTEND_URL,
 });

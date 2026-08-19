@@ -5,6 +5,7 @@ import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../prisma/prisma.service';
 import { InviteMemberDto } from './dto/invite-member.dto';
 import { UpdateMemberDto } from './dto/update-member.dto';
+import { NotificationsService } from '../notifications/notifications.service';
 
 const MEMBER_INCLUDE = {
   user: { select: { id: true, email: true, fullName: true, isActive: true } },
@@ -12,7 +13,10 @@ const MEMBER_INCLUDE = {
 
 @Injectable()
 export class TeamsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notificationsService: NotificationsService,
+  ) {}
 
   findAllForOrganization(organizationId: string) {
     return this.prisma.organizationMember.findMany({
@@ -30,8 +34,9 @@ export class TeamsService {
       ? existing.id
       : await this.createPlaceholderUser(dto.email, dto.fullName);
 
+    let membership;
     try {
-      return await this.prisma.organizationMember.create({
+      membership = await this.prisma.organizationMember.create({
         data: {
           organizationId,
           userId,
@@ -47,6 +52,9 @@ export class TeamsService {
       }
       throw error;
     }
+
+    await this.notificationsService.notifyTeamInvitation(membership.id);
+    return membership;
   }
 
   async update(organizationId: string, memberId: string, dto: UpdateMemberDto) {

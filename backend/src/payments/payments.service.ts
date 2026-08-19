@@ -4,6 +4,7 @@ import { ConfigService } from '@nestjs/config';
 import { OrderStatus, PaymentStatus, Prisma, TicketStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { PaydunyaProvider } from './providers/paydunya.provider';
+import { NotificationsService } from '../notifications/notifications.service';
 
 interface ParsedIpnPayload {
   hash?: string;
@@ -18,6 +19,7 @@ export class PaymentsService {
     private readonly prisma: PrismaService,
     private readonly paydunyaProvider: PaydunyaProvider,
     private readonly configService: ConfigService,
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   // See docs/MODULE_PAIEMENT_SPEC.md §3-4. `rawBody` is the parsed
@@ -108,6 +110,8 @@ export class PaymentsService {
       where: { status: TicketStatus.PENDING_PAYMENT, orderItem: { orderId: payment.orderId } },
       data: { status: TicketStatus.VALID },
     });
+
+    await this.notificationsService.notifyOrderConfirmation(payment.orderId);
   }
 
   private verifyHash(receivedHash: string | undefined): boolean {

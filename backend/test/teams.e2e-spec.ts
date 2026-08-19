@@ -29,6 +29,8 @@ describe('Teams (e2e)', () => {
     for (const email of createdUserEmails) {
       const user = await prisma.user.findFirst({ where: { email } });
       if (!user) continue;
+      // notifications.user_id has no cascade — must go before deleting the user.
+      await prisma.notification.deleteMany({ where: { userId: user.id } });
       await prisma.organization.deleteMany({ where: { ownerUserId: user.id } });
       await prisma.organizationMember.deleteMany({ where: { userId: user.id } });
       await prisma.user.delete({ where: { id: user.id } });

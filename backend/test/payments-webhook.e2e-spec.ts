@@ -57,8 +57,10 @@ describe('PayDunya IPN webhook (e2e)', () => {
       const eventIds = (
         await prisma.event.findMany({ where: { organizationId: { in: organizations.map((o) => o.id) } } })
       ).map((e) => e.id);
-      // orders/payouts reference events without cascade — must go first, or
-      // deleting the organization (which cascades to events) would 23503.
+      // orders/payouts reference events without cascade, and notifications
+      // reference orders without cascade — all must go before the
+      // organization (which cascades to events), or deletion 23503s.
+      await prisma.notification.deleteMany({ where: { order: { eventId: { in: eventIds } } } });
       await prisma.order.deleteMany({ where: { eventId: { in: eventIds } } });
       await prisma.payout.deleteMany({ where: { eventId: { in: eventIds } } });
       await prisma.organization.deleteMany({ where: { ownerUserId: user.id } });

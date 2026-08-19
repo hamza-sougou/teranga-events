@@ -3,7 +3,7 @@
 > Dernière mise à jour : 2026-08-18. Ce fichier est un instantané de suivi, à remettre à jour après chaque module (voir `CLAUDE.md`). Pour l'état exact du code, `git log` et le code lui-même font foi — ce document sert de vue d'ensemble rapide.
 
 Branche `main`, à jour avec `origin/main`. Commits de modules jusqu'ici :
-`DB Connection & Migrations Finished` → `Google OAuth Schema, RBAC, Classic Auth, Seeds & Tests` → `Events CRUD & API` → `Ticket Types Module` → `Teams Module` → `Progress.md file added` → `Stripe fully removed` → `Payment Module` → **Scan Module (en attente de commit)**.
+`DB Connection & Migrations Finished` → `Google OAuth Schema, RBAC, Classic Auth, Seeds & Tests` → `Events CRUD & API` → `Ticket Types Module` → `Teams Module` → `Progress.md file added` → `Stripe fully removed` → `Payment Module` → `Scan Module` → **Notifications Module (en attente de commit)**.
 
 ---
 
@@ -60,10 +60,19 @@ Branche `main`, à jour avec `origin/main`. Commits de modules jusqu'ici :
 - Tests e2e : `scan.e2e-spec.ts` (9 tests), dont le **test de concurrence obligatoire** (deux scans simultanés du même billet → un seul `SUCCESS`).
 - Au passage, deux bugs pré-existants corrigés (pas liés au scan lui-même) : le nettoyage des tests `orders`/`payments`/`payouts` ne supprimait pas les `scans` avant les `orders` (violation de clé étrangère silencieuse qui bloquait Jest indéfiniment), et `payments-webhook.e2e-spec.ts` calculait le hash IPN avec une `PAYDUNYA_MASTER_KEY` vide codée en dur au lieu de la lire dynamiquement — cassé dès que la vraie clé sandbox a été renseignée dans `.env`.
 
-### 8. État global des tests
-**75/75 tests automatisés passent** : 7 unitaires + 68 e2e répartis sur 10 suites (`app`, `auth`, `events`, `ticket-capacity`, `ticket-types`, `teams`, `orders`, `payments-webhook`, `payouts`, `scan`), contre une vraie base PostgreSQL locale.
+### 8. Module Notifications — **nouveau**
+- **Trois déclencheurs** : confirmation de commande (`PaymentsService`, juste après le passage `PENDING → PAID`), annulation d'évènement (`EventsService.update`, uniquement lors d'une transition **vers** `CANCELLED` — une notification par commande `PAID`, protégé contre les doublons si le statut est réappliqué), invitation d'équipe (`TeamsService.invite`, comble la limite documentée du module teams où l'invité n'avait aucun moyen d'être prévenu).
+- **Envoi asynchrone via balayage** : les points de déclenchement créent juste une ligne `notifications` (`PENDING`) — rapide, aucune dépendance externe sur le chemin critique (webhook, checkout). `NotificationsDispatchJob` (`@Cron` chaque minute, même cadence que `OrdersExpirationJob`) envoie réellement les emails et marque `SENT`/`FAILED` ; un échec n'interrompt jamais le traitement des autres notifications du lot.
+- **`EventReminderJob`** (`@Cron` toutes les heures) : crée une notification `event_reminder` par commande payée dont l'évènement démarre dans les 24h, idempotent par requête d'existence (pas de nouvelle colonne).
+- **Email seul implémenté** (`nodemailer`, déjà en dépendance) ; `SmsChannel` reste un stub explicite (lève une erreur si jamais appelé) — aucun fournisseur SMS n'est configuré dans le projet, même traitement que `CinetpayProvider` pendant le module paiement.
+- Pas de nouvel endpoint HTTP — mécanisme de fond, inspection via la table `notifications` directement pendant cette passe.
+- Tests e2e : `notifications.e2e-spec.ts` (6 tests) — création de notification, envoi réussi, échec isolé sans bloquer le lot, annulation d'évènement (avec/sans commandes payées, non-duplication), rappel d'évènement (fenêtre 24h, non-duplication), invitation d'équipe.
+- Au passage, un bug pré-existant corrigé (pas lié aux notifications elles-mêmes) : `notifications.user_id`/`order_id` n'ont pas de cascade vers `users`/`orders` — le nettoyage de `teams.e2e-spec.ts` et `payments-webhook.e2e-spec.ts` ne supprimait pas les notifications avant les lignes qu'elles référencent (même famille de bug que celui trouvé pendant le module Scan).
 
-### 9. Documentation
+### 9. État global des tests
+**81/81 tests automatisés passent** : 7 unitaires + 74 e2e répartis sur 11 suites (`app`, `auth`, `events`, `ticket-capacity`, `ticket-types`, `teams`, `orders`, `payments-webhook`, `payouts`, `scan`, `notifications`), contre une vraie base PostgreSQL locale.
+
+### 10. Documentation
 - `docs/SPEC.md` — spec produit/technique à jour (PayDunya comme unique prestataire actif, modèle de commission, règle de reversement).
 - `docs/MODULE_PAIEMENT_SPEC.md` — spec technique complète du module Vente & Paiement, implémentée et vérifiée.
 - `CLAUDE.md` — règles de travail et stack à jour, avec la règle de reversement organisateur ajoutée aux invariants critiques.
@@ -73,10 +82,11 @@ Branche `main`, à jour avec `origin/main`. Commits de modules jusqu'ici :
 ## 🚧 Ce qu'il reste à faire
 
 ### Backend — modules non démarrés (squelettes vides uniquement)
-- **Notifications** (`src/notifications/`) — email/SMS (canaux `email.channel.ts`/`sms.channel.ts` vides), confirmation d'achat, rappel, annulation. Nécessaire aussi pour prévenir les invités du module teams (actuellement sans notification, limite MVP assumée).
 - **Stats** (`src/stats/`) — tableau de bord : ventes temps réel, taux de remplissage, exports.
 - **Codes promo** (`promo_codes` existe en base, aucune logique applicative) — Phase 2 du roadmap, à ne pas anticiper avant la fin de la Phase 1.
 - **Ticket-holder détaillé** (`holder_name`/`holder_email` par billet, billets nominatifs) — hors-scope assumé de la passe paiement, à ajouter si besoin.
+- **SMS** (`SmsChannel`) — aucun fournisseur configuré, stub explicite pour l'instant.
+- **Annulation de commande individuelle** — le type `cancellation` du module notifications ne couvre que l'annulation d'un évènement entier ; aucun flux de remboursement/annulation d'une commande payée après coup n'existe encore (`docs/MODULE_PAIEMENT_SPEC.md` §0, hors-scope assumé).
 
 ### Infrastructure non configurée
 - **Redis** — dépendance `ioredis` présente, `REDIS_URL` dans `.env.example`, mais pas encore utilisé.
@@ -90,8 +100,8 @@ Branche `main`, à jour avec `origin/main`. Commits de modules jusqu'ici :
 ### Mobile (Flutter)
 - **Non démarré.** Trois surfaces prévues par la spec : app Organisateur (web+mobile), app Scan dédiée (Contrôleur, offline-first), wallet Participant optionnel (Phase 3).
 
-### Ordre du roadmap restant (`CLAUDE.md`)
+### Ordre du roadmap `CLAUDE.md` — **terminé**
 ```
-DB ✅ → Auth/rôles ✅ → Events ✅ → Ticket types ✅ → Orders/Payments ✅ → Scan ✅ → Notifications ⬜
+DB ✅ → Auth/rôles ✅ → Events ✅ → Ticket types ✅ → Orders/Payments ✅ → Scan ✅ → Notifications ✅
 ```
-Teams et le reversement organisateur ont été traités en parallèle (indépendants du reste). Prochain module logique : **Notifications** (email/SMS — confirmation d'achat, rappel, annulation), seul module Phase 1 restant dans l'ordre du roadmap. Après ça, il ne reste que Stats et le reste du frontend/mobile pour compléter le MVP.
+Tous les modules de la séquence explicite `CLAUDE.md` sont livrés et testés (Teams et le reversement organisateur traités en parallèle). Ce qui reste pour un MVP complet, sans ordre imposé par `CLAUDE.md` : **Stats** (dashboard), connecter le **frontend web** aux endpoints déjà prêts, et démarrer le **mobile Flutter**.

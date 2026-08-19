@@ -3,6 +3,7 @@ import { EventStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateEventDto } from './dto/create-event.dto';
 import { UpdateEventDto } from './dto/update-event.dto';
+import { NotificationsService } from '../notifications/notifications.service';
 
 const ALLOWED_TRANSITIONS: Record<EventStatus, EventStatus[]> = {
   [EventStatus.DRAFT]: [EventStatus.PUBLISHED, EventStatus.CANCELLED],
@@ -25,7 +26,10 @@ const PUBLIC_EVENT_SELECT = {
 
 @Injectable()
 export class EventsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notificationsService: NotificationsService,
+  ) {}
 
   async create(organizationId: string, userId: string, dto: CreateEventDto) {
     this.assertDateOrder(dto.startAt, dto.endAt);
@@ -79,8 +83,9 @@ export class EventsService {
       }
     }
 
+    let updated;
     try {
-      return await this.prisma.event.update({
+      updated = await this.prisma.event.update({
         where: { id: eventId },
         data: {
           name: dto.name,
@@ -100,6 +105,15 @@ export class EventsService {
       }
       throw error;
     }
+
+    // Guard on the *previous* status too — re-sending `status: CANCELLED`
+    // on an already-cancelled event (a harmless no-op update) must not
+    // re-notify every buyer a second time.
+    if (dto.status === EventStatus.CANCELLED && event.status !== EventStatus.CANCELLED) {
+      await this.notificationsService.notifyEventCancelled(eventId);
+    }
+
+    return updated;
   }
 
   async findPublicBySlug(slug: string) {
