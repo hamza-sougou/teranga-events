@@ -3,7 +3,7 @@
 > Dernière mise à jour : 2026-08-18. Ce fichier est un instantané de suivi, à remettre à jour après chaque module (voir `CLAUDE.md`). Pour l'état exact du code, `git log` et le code lui-même font foi — ce document sert de vue d'ensemble rapide.
 
 Branche `main`, à jour avec `origin/main`. Commits de modules jusqu'ici :
-`DB Connection & Migrations Finished` → `Google OAuth Schema, RBAC, Classic Auth, Seeds & Tests` → `Events CRUD & API` → `Ticket Types Module` → `Teams Module` → `Progress.md file added` → `Stripe fully removed` → `Payment Module` → `Scan Module` → **Notifications Module (en attente de commit)**.
+`DB Connection & Migrations Finished` → `Google OAuth Schema, RBAC, Classic Auth, Seeds & Tests` → `Events CRUD & API` → `Ticket Types Module` → `Teams Module` → `Progress.md file added` → `Stripe fully removed` → `Payment Module` → `Scan Module` → `Notifications Module` → **Stats Module (en attente de commit)**.
 
 ---
 
@@ -69,10 +69,18 @@ Branche `main`, à jour avec `origin/main`. Commits de modules jusqu'ici :
 - Tests e2e : `notifications.e2e-spec.ts` (6 tests) — création de notification, envoi réussi, échec isolé sans bloquer le lot, annulation d'évènement (avec/sans commandes payées, non-duplication), rappel d'évènement (fenêtre 24h, non-duplication), invitation d'équipe.
 - Au passage, un bug pré-existant corrigé (pas lié aux notifications elles-mêmes) : `notifications.user_id`/`order_id` n'ont pas de cascade vers `users`/`orders` — le nettoyage de `teams.e2e-spec.ts` et `payments-webhook.e2e-spec.ts` ne supprimait pas les notifications avant les lignes qu'elles référencent (même famille de bug que celui trouvé pendant le module Scan).
 
-### 9. État global des tests
-**81/81 tests automatisés passent** : 7 unitaires + 74 e2e répartis sur 11 suites (`app`, `auth`, `events`, `ticket-capacity`, `ticket-types`, `teams`, `orders`, `payments-webhook`, `payouts`, `scan`, `notifications`), contre une vraie base PostgreSQL locale.
+### 9. Module Stats (tableau de bord) — **nouveau**
+- `GET /organizations/:organizationId/events/:eventId/stats` : capacité (réservée/totale via `quantity_sold`, déjà maintenu par le trigger anti-survente — pas recalculé), taux de remplissage, répartition des billets par statut, revenus (brut payé par le client / part organisateur / commission plateforme — ne comptent que les commandes `PAID`), détail par type de billet, statut du reversement s'il existe.
+- `GET /organizations/:organizationId/stats` : agrégat sur tous les évènements de l'organisation (comptage par statut, revenus cumulés).
+- `GET /organizations/:organizationId/events/:eventId/orders/export` : export CSV des commandes de l'évènement (construit à la main, pas de nouvelle dépendance).
+- RBAC : `ALL_MEMBER_ROLES` en lecture pour les trois endpoints — pas de masquage de champs par rôle, cohérent avec `GET .../orders`/`GET .../scans` déjà en place.
+- **Stats "Vendeur" volontairement absentes** : `orders.seller_id` existe en base mais aucun flux actuel ne le renseigne (vente terrain assistée hors-scope du module paiement) — une vue "mes ventes" n'aurait aucune donnée réelle à afficher pour l'instant.
+- Tests e2e : `stats.e2e-spec.ts` (6 tests) — capacité/revenus/répartition avec commandes mixtes (payées/en attente/annulées), évènement vide, agrégat organisation, export CSV, isolation inter-organisation, accès refusé sans membership.
 
-### 10. Documentation
+### 10. État global des tests
+**87/87 tests automatisés passent** : 7 unitaires + 80 e2e répartis sur 12 suites (`app`, `auth`, `events`, `ticket-capacity`, `ticket-types`, `teams`, `orders`, `payments-webhook`, `payouts`, `scan`, `notifications`, `stats`), contre une vraie base PostgreSQL locale.
+
+### 11. Documentation
 - `docs/SPEC.md` — spec produit/technique à jour (PayDunya comme unique prestataire actif, modèle de commission, règle de reversement).
 - `docs/MODULE_PAIEMENT_SPEC.md` — spec technique complète du module Vente & Paiement, implémentée et vérifiée.
 - `CLAUDE.md` — règles de travail et stack à jour, avec la règle de reversement organisateur ajoutée aux invariants critiques.
@@ -81,8 +89,7 @@ Branche `main`, à jour avec `origin/main`. Commits de modules jusqu'ici :
 
 ## 🚧 Ce qu'il reste à faire
 
-### Backend — modules non démarrés (squelettes vides uniquement)
-- **Stats** (`src/stats/`) — tableau de bord : ventes temps réel, taux de remplissage, exports.
+### Backend — ce qui reste
 - **Codes promo** (`promo_codes` existe en base, aucune logique applicative) — Phase 2 du roadmap, à ne pas anticiper avant la fin de la Phase 1.
 - **Ticket-holder détaillé** (`holder_name`/`holder_email` par billet, billets nominatifs) — hors-scope assumé de la passe paiement, à ajouter si besoin.
 - **SMS** (`SmsChannel`) — aucun fournisseur configuré, stub explicite pour l'instant.
