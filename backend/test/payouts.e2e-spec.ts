@@ -216,5 +216,6 @@ describe('Payouts — organizer reversement (e2e)', () => {
 
     expect(res.body).toHaveLength(1);
     expect(res.body[0].status).toBe('PAID');
+    expect(res.body[0].event).toMatchObject({ id: event.id, name: 'Festival Terminé' });
   });
 });

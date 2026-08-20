@@ -125,6 +125,7 @@ export class PayoutsService {
     return this.prisma.payout.findMany({
       where: { organizationId },
       orderBy: { createdAt: 'desc' },
+      include: { event: { select: { id: true, name: true } } },
     });
   }
 }

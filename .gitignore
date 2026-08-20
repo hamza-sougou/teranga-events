@@ -8,6 +8,7 @@ backend/prisma/migrations/dev.db*
 # web
 web/.next/
 web/out/
+web/tsconfig.tsbuildinfo
 
 # env
 .env

@@ -183,6 +183,32 @@ describe('Stats (e2e)', () => {
     expect(res.body.eventsByStatus.DRAFT).toBe(1);
     expect(res.body.revenue.organizerRevenue).toBe(4000);
     expect(res.body.revenue.paidOrdersCount).toBe(1);
+    expect(res.body.capacity).toEqual({ total: 10, reserved: 1, available: 9 });
+    expect(res.body.fillRate).toBeCloseTo(0.1);
+
+    expect(res.body.recentEvents).toHaveLength(2);
+    const publishedEntry = res.body.recentEvents.find((e: { id: string }) => e.id === publishedEvent.id);
+    expect(publishedEntry).toMatchObject({ ticketsSold: 1, ticketsTotal: 10, revenue: 4000 });
+
+    expect(res.body.weeklySales).toHaveLength(7);
+    const today = new Date().toISOString().slice(0, 10);
+    const todayBucket = res.body.weeklySales.find((d: { date: string }) => d.date === today);
+    expect(todayBucket.ordersCount).toBeGreaterThanOrEqual(1);
+  });
+
+  it('returns an empty recentEvents/zeroed weeklySales for an organization with no events', async () => {
+    const { organizationId, accessToken } = await registerOrganizer();
+
+    const res = await request(app.getHttpServer())
+      .get(`/organizations/${organizationId}/stats`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    expect(res.body.capacity).toEqual({ total: 0, reserved: 0, available: 0 });
+    expect(res.body.fillRate).toBe(0);
+    expect(res.body.recentEvents).toEqual([]);
+    expect(res.body.weeklySales).toHaveLength(7);
+    expect(res.body.weeklySales.every((d: { ordersCount: number }) => d.ordersCount === 0)).toBe(true);
   });
 
   it('exports orders as CSV with the right headers and content type', async () => {

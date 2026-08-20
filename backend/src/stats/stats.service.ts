@@ -77,7 +77,7 @@ export class StatsService {
   }
 
   async getOrganizationStats(organizationId: string) {
-    const [eventGroups, revenueAgg] = await Promise.all([
+    const [eventGroups, revenueAgg, capacityAgg, recentEvents, weeklySales] = await Promise.all([
       this.prisma.event.groupBy({
         by: ['status'],
         where: { organizationId },
@@ -88,6 +88,12 @@ export class StatsService {
         _sum: { subtotalAmount: true, serviceFeeAmount: true, totalAmount: true },
         _count: true,
       }),
+      this.prisma.ticketType.aggregate({
+        where: { event: { organizationId } },
+        _sum: { quantityTotal: true, quantitySold: true },
+      }),
+      this.getRecentEventsBreakdown(organizationId),
+      this.getWeeklySales(organizationId),
     ]);
 
     const eventsByStatus = Object.fromEntries(
@@ -99,9 +105,18 @@ export class StatsService {
       totalEvents += group._count._all;
     }
 
+    const capacityTotal = capacityAgg._sum.quantityTotal ?? 0;
+    const capacityReserved = capacityAgg._sum.quantitySold ?? 0;
+
     return {
       totalEvents,
       eventsByStatus,
+      capacity: {
+        total: capacityTotal,
+        reserved: capacityReserved,
+        available: capacityTotal - capacityReserved,
+      },
+      fillRate: capacityTotal > 0 ? capacityReserved / capacityTotal : 0,
       revenue: {
         grossRevenue: Number(revenueAgg._sum.totalAmount ?? 0),
         organizerRevenue: Number(revenueAgg._sum.subtotalAmount ?? 0),
@@ -109,7 +124,64 @@ export class StatsService {
         currency: 'XOF',
         paidOrdersCount: revenueAgg._count,
       },
+      recentEvents,
+      weeklySales,
     };
+  }
+
+  // 5 most recent events with their own ticket/revenue breakdown — two
+  // grouped queries (ticket types already joined, revenue via groupBy),
+  // never one query per event.
+  private async getRecentEventsBreakdown(organizationId: string) {
+    const events = await this.prisma.event.findMany({
+      where: { organizationId },
+      orderBy: { startAt: 'desc' },
+      take: 5,
+      include: { ticketTypes: { select: { quantityTotal: true, quantitySold: true } } },
+    });
+    if (events.length === 0) return [];
+
+    const revenueByEvent = await this.prisma.order.groupBy({
+      by: ['eventId'],
+      where: { eventId: { in: events.map((event) => event.id) }, status: OrderStatus.PAID },
+      _sum: { subtotalAmount: true },
+    });
+    const revenueMap = new Map(revenueByEvent.map((row) => [row.eventId, Number(row._sum.subtotalAmount ?? 0)]));
+
+    return events.map((event) => ({
+      id: event.id,
+      name: event.name,
+      slug: event.slug,
+      status: event.status,
+      startAt: event.startAt,
+      venueName: event.venueName,
+      ticketsSold: event.ticketTypes.reduce((sum, tt) => sum + tt.quantitySold, 0),
+      ticketsTotal: event.ticketTypes.reduce((sum, tt) => sum + tt.quantityTotal, 0),
+      revenue: revenueMap.get(event.id) ?? 0,
+    }));
+  }
+
+  // Orders count per day, last 7 days (today included), bucketed in JS
+  // rather than a raw DATE_TRUNC query — the order volume this needs to
+  // handle at MVP scale is small enough that this stays simple and correct;
+  // revisit with a grouped SQL query if that stops being true.
+  private async getWeeklySales(organizationId: string) {
+    const now = new Date();
+    const bucketStarts: Date[] = [];
+    for (let i = 6; i >= 0; i--) {
+      bucketStarts.push(new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - i)));
+    }
+
+    const paidOrders = await this.prisma.order.findMany({
+      where: { event: { organizationId }, status: OrderStatus.PAID, updatedAt: { gte: bucketStarts[0] } },
+      select: { updatedAt: true },
+    });
+
+    return bucketStarts.map((bucketStart) => {
+      const bucketEnd = new Date(bucketStart.getTime() + 24 * 60 * 60 * 1000);
+      const ordersCount = paidOrders.filter((o) => o.updatedAt >= bucketStart && o.updatedAt < bucketEnd).length;
+      return { date: bucketStart.toISOString().slice(0, 10), ordersCount };
+    });
   }
 
   async exportEventOrdersCsv(organizationId: string, eventId: string): Promise<string> {

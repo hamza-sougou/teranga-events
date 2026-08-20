@@ -1,9 +1,11 @@
 # Suivi d'avancement — Event Manager App
 
-> Dernière mise à jour : 2026-08-18. Ce fichier est un instantané de suivi, à remettre à jour après chaque module (voir `CLAUDE.md`). Pour l'état exact du code, `git log` et le code lui-même font foi — ce document sert de vue d'ensemble rapide.
+> Dernière mise à jour : 2026-08-20. Ce fichier est un instantané de suivi, à remettre à jour après chaque module ou page frontend (voir `CLAUDE.md`). Pour l'état exact du code, `git log` et le code lui-même font foi — ce document sert de vue d'ensemble rapide.
 
-Branche `main`, à jour avec `origin/main`. Commits de modules jusqu'ici :
-`DB Connection & Migrations Finished` → `Google OAuth Schema, RBAC, Classic Auth, Seeds & Tests` → `Events CRUD & API` → `Ticket Types Module` → `Teams Module` → `Progress.md file added` → `Stripe fully removed` → `Payment Module` → `Scan Module` → `Notifications Module` → **Stats Module (en attente de commit)**.
+Branche `main`. Commits de modules jusqu'ici :
+`DB Connection & Migrations Finished` → `Google OAuth Schema, RBAC, Classic Auth, Seeds & Tests` → `Events CRUD & API` → `Ticket Types Module` → `Teams Module` → `Progress.md file added` → `Stripe fully removed` → `Payment Module` → `Scan Module` → `Notifications Module` → `Statistics Module Completed` → `Docker Config & App Health` (Infrastructure Phase 1).
+
+**Non commité pour l'instant** (travail terminé et vérifié, en attente de test manuel + commit par l'utilisateur) : socle frontend (design tokens, React Query, client API) + page **Tableau de bord organisateur** (première page du frontend web) + convention icônes **Iconify**, ainsi que 3 petits enrichissements backend additifs qui l'accompagnent (voir sections 11 et 12 ci-dessous).
 
 ---
 
@@ -78,37 +80,65 @@ Branche `main`, à jour avec `origin/main`. Commits de modules jusqu'ici :
 - Tests e2e : `stats.e2e-spec.ts` (6 tests) — capacité/revenus/répartition avec commandes mixtes (payées/en attente/annulées), évènement vide, agrégat organisation, export CSV, isolation inter-organisation, accès refusé sans membership.
 
 ### 10. État global des tests
-**87/87 tests automatisés passent** : 7 unitaires + 80 e2e répartis sur 12 suites (`app`, `auth`, `events`, `ticket-capacity`, `ticket-types`, `teams`, `orders`, `payments-webhook`, `payouts`, `scan`, `notifications`, `stats`), contre une vraie base PostgreSQL locale.
+**88/88 tests automatisés passent** : 7 unitaires + 81 e2e répartis sur 12 suites (`app`, `auth`, `events`, `ticket-capacity`, `ticket-types`, `teams`, `orders`, `payments-webhook`, `payouts`, `scan`, `notifications`, `stats`), contre une vraie base PostgreSQL locale. Inclut les enrichissements `stats`/`payouts` ajoutés pour la page Tableau de bord (section 12).
 
-### 11. Documentation
+### 11. Infrastructure (Phase 1 — tout ce qui ne nécessite aucun compte/identifiant externe)
+- **Docker** : `backend/Dockerfile` (build multi-stage) + `docker-compose.yml` (postgres/redis/backend) à la racine, `.dockerignore`. Vérifié en conditions réelles : build, boot, `GET /health` → `200` (DB jointe) et `503` (DB coupée). Deux pièges rencontrés et corrigés : `npm ci` en monorepo workspaces ne crée pas de `backend/node_modules` séparé (tout est hissé à la racine) ; l'image `node:20-slim` n'a pas `libssl` par défaut, ce qui générait un client Prisma pour la mauvaise version d'OpenSSL au moment du build (`openssl` installé explicitement dans les deux stages qui en ont besoin).
+- **Sécurité applicative** : Helmet, CORS restreint à une liste blanche (`CORS_ORIGINS`), `@nestjs/throttler` (désactivé sous `NODE_ENV=test` pour ne pas casser la suite de tests), validation stricte des variables d'environnement structurelles au boot (`env.validation.ts`, sans casser la dégradation gracieuse déjà en place pour Google/PayDunya/SMTP).
+- **Observabilité** : `GET /health`, logs structurés (`nestjs-pino`, JSON en prod, silencieux en test), intégration `@sentry/node` (inactive tant que `SENTRY_DSN` n'est pas fourni). Audit des logs existants effectué : aucun secret/clé API/mot de passe n'est jamais loggé.
+- **CI** : `.github/workflows/ci.yml` (lint, type-check, migrations, tests unitaires + e2e, build de l'image Docker). Étapes de déploiement volontairement absentes (aucun hébergeur choisi). `backend/.eslintrc.js` créé au passage — première config ESLint fonctionnelle du projet (les dépendances existaient dans le scaffold initial mais n'avaient jamais été câblées).
+- Détail complet et raisons des choix : `docs/INFRASTRUCTURE.md` §1 "État actuel".
+
+### 12. Frontend web — socle + première page (Tableau de bord organisateur)
+- **Socle** (réutilisé par toutes les pages suivantes) : design tokens `docs/DESIGN_SYSTEM.md` §2 en variables CSS (`globals.css`) reprises 1:1 dans `tailwind.config.ts`, police Archivo via `next/font/google`, `QueryClientProvider` (`@tanstack/react-query`), client API axios avec intercepteurs auth (`lib/api-client.ts`), `useCurrentUser()`, `types/index.ts` aligné sur les vrais enums backend.
+- **Composants partagés** (`components/ui/`) : `Kicker`, `Button`, `Panel`, `MetricCard`, `StatusBadge` (mappe `EventStatus`/`PayoutStatus` → couleur sémantique), `Avatar`.
+- **Page Tableau de bord** (`app/(organizer)/dashboard/`) : sidebar sombre + nav groupée, topbar, 4 cartes métriques, graphique ventes 7 jours, table évènements, panneaux équipe/reversements — fidèle à `design/mockups/zen-events-dashboard-mockup.html`, vérifié visuellement via Playwright à 375/768/1280px (captures inspectées directement, zéro erreur console).
+- **3 enrichissements backend additifs** (aucune migration, réponses existantes complétées) pour alimenter cette page : `PayoutsService.findAllForOrganization` joint désormais l'évènement (nom affiché à côté de chaque reversement) ; `StatsService.getOrganizationStats` gagne `capacity`/`fillRate` (org-wide), `recentEvents` (5 évènements les plus récents, requêtes groupées, pas de N+1), `weeklySales` (billets vendus par jour, 7 derniers jours).
+- **Convention icônes adoptée pour tout le projet** : Iconify (`@iconify/react/offline`) + jeu Lucide (`@iconify-icons/lucide`), plus aucun SVG à la main. Appliqué rétroactivement aux 7 icônes de la page Tableau de bord (`components/dashboard/nav-icons.tsx`), documenté dans `docs/DESIGN_SYSTEM.md` §"Icônes" comme règle obligatoire pour toutes les pages à venir.
+- Détail du plan de construction page par page (ordre, dépendances backend, pages repoussées) : `docs/DESIGN_SYSTEM.md` §5.
+
+### 13. Documentation
 - `docs/SPEC.md` — spec produit/technique à jour (PayDunya comme unique prestataire actif, modèle de commission, règle de reversement).
 - `docs/MODULE_PAIEMENT_SPEC.md` — spec technique complète du module Vente & Paiement, implémentée et vérifiée.
-- `CLAUDE.md` — règles de travail et stack à jour, avec la règle de reversement organisateur ajoutée aux invariants critiques.
+- `docs/INFRASTRUCTURE.md` — référence déploiement/sécurité/observabilité, tâches taguées **[Claude Code]**/**[Vous]**, §1 tenu à jour après la Phase 1.
+- `docs/DESIGN_SYSTEM.md` — identité visuelle frontend, tokens, motifs signature, convention icônes, plan de construction page par page.
+- `CLAUDE.md` — règles de travail, stack et commandes à jour.
 
 ---
 
 ## 🚧 Ce qu'il reste à faire
 
-### Backend — ce qui reste
-- **Codes promo** (`promo_codes` existe en base, aucune logique applicative) — Phase 2 du roadmap, à ne pas anticiper avant la fin de la Phase 1.
-- **Ticket-holder détaillé** (`holder_name`/`holder_email` par billet, billets nominatifs) — hors-scope assumé de la passe paiement, à ajouter si besoin.
+### Backend — reporté (Phase 2, ne pas anticiper)
+- **Codes promo** (`promo_codes` existe en base, aucune logique applicative).
+- **Ticket-holder détaillé** (`holder_name`/`holder_email` par billet, billets nominatifs).
 - **SMS** (`SmsChannel`) — aucun fournisseur configuré, stub explicite pour l'instant.
-- **Annulation de commande individuelle** — le type `cancellation` du module notifications ne couvre que l'annulation d'un évènement entier ; aucun flux de remboursement/annulation d'une commande payée après coup n'existe encore (`docs/MODULE_PAIEMENT_SPEC.md` §0, hors-scope assumé).
+- **Annulation de commande individuelle** — le type `cancellation` du module notifications ne couvre que l'annulation d'un évènement entier ; aucun flux de remboursement/annulation d'une commande payée après coup n'existe encore (`docs/MODULE_PAIEMENT_SPEC.md` §0).
+- **Mini-module Super Admin** (validation/modération organisateurs, finances plateforme) — bloque les pages Super Admin du frontend, voir `docs/DESIGN_SYSTEM.md` "Repoussé".
 
-### Infrastructure non configurée
-- **Redis** — dépendance `ioredis` présente, `REDIS_URL` dans `.env.example`, mais pas encore utilisé.
+### Infrastructure non configurée (tâches **[Vous]**, voir `docs/INFRASTRUCTURE.md`)
+- **Redis** — provisionné via Docker mais pas encore branché à l'application (jobs, rate limiting, cache) ; décision explicite de garder `@Cron` tant qu'une seule instance backend tourne.
+- **Base de données managée** (DigitalOcean/Render) — actuellement Postgres local uniquement, aucun staging/prod.
 - **Stockage fichiers (S3 / Cloudflare R2)** — pas encore configuré (images d'évènements, exports).
-- **Hébergement / déploiement** (DigitalOcean / Render) — aucune configuration CI/CD ni déploiement pour l'instant.
-- **PayDunya en mode `live`** — actuellement en mode `test` (sandbox) avec des clés de test ; passage en production à faire une fois l'activité réelle prête à démarrer.
+- **Hébergement / déploiement** — aucune configuration de déploiement CD, CI seule en place.
+- **Domaine & email** (DNS, SPF/DKIM/DMARC) — nécessaire avant que les emails transactionnels n'évitent le spam en prod.
+- **PayDunya en mode `live`** — actuellement en mode `test` (sandbox) ; le switch est déjà entièrement piloté par `PAYDUNYA_MODE`, aucun code à changer, juste les vraies clés + la vraie URL IPN à fournir.
 
 ### Frontend web (`web/`)
-- Arborescence Next.js scaffoldée (pages admin/organisateur/checkout/login/auth callback) mais **contenu non implémenté** — essentiellement des placeholders. Aucune page n'est encore connectée aux endpoints backend existants (events, ticket-types, teams, orders/checkout).
+Construction page par page en cours, une session Claude Code dédiée par page (voir `docs/DESIGN_SYSTEM.md` §5) :
+- ✅ **Tableau de bord organisateur** — construit et vérifié visuellement (section 12 ci-dessus).
+- ⬜ Création / édition d'évènement (types de billets, prévente incluse)
+- ⬜ Détail des ventes / historique de scan
+- ⬜ Gestion de l'équipe
+- ⬜ Reversements
+- ⬜ Paramètres du compte
+- ⬜ Page détail évènement, panier/checkout, redirection paiement + confirmation, connexion/inscription (surfaces participant/public)
+- 🚫 **Repoussé** : page d'accueil (nouvelle maquette + backend mise en avant/sponsoring/géoloc manquants), pages Super Admin (bloquées sur le mini-module backend ci-dessus)
 
 ### Mobile (Flutter)
 - **Non démarré.** Trois surfaces prévues par la spec : app Organisateur (web+mobile), app Scan dédiée (Contrôleur, offline-first), wallet Participant optionnel (Phase 3).
 
 ### Ordre du roadmap `CLAUDE.md` — **terminé**
 ```
-DB ✅ → Auth/rôles ✅ → Events ✅ → Ticket types ✅ → Orders/Payments ✅ → Scan ✅ → Notifications ✅
+DB ✅ → Auth/rôles ✅ → Events ✅ → Ticket types ✅ → Orders/Payments ✅ → Scan ✅ → Notifications ✅ → Stats ✅
 ```
-Tous les modules de la séquence explicite `CLAUDE.md` sont livrés et testés (Teams et le reversement organisateur traités en parallèle). Ce qui reste pour un MVP complet, sans ordre imposé par `CLAUDE.md` : **Stats** (dashboard), connecter le **frontend web** aux endpoints déjà prêts, et démarrer le **mobile Flutter**.
+Tous les modules de la séquence explicite `CLAUDE.md` sont livrés et testés (Teams et le reversement organisateur traités en parallèle), ainsi que l'Infrastructure Phase 1. Le travail actuel, sans ordre imposé par `CLAUDE.md` au-delà du plan page par page : **frontend web** (1/10+ pages faites), puis **mobile Flutter** (non démarré).

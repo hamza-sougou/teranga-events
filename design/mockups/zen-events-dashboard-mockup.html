@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Zen Events — Dashboard organisateur</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;700;900&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #F6F4EE;
+    --card: #FFFFFF;
+    --ink: #17121F;
+    --ink-2: #241C33;
+    --text: #17121F;
+    --text-muted: #6E6779;
+    --on-dark: #F6F4EE;
+    --on-dark-muted: #AFA6BE;
+    --indigo: #5533E0;
+    --amber: #FFB627;
+    --emerald: #0FBF8F;
+    --border: rgba(23, 18, 31, 0.12);
+    --radius: 6px;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: 'Archivo', sans-serif; line-height: 1.5; }
+
+  .kicker-bar { display: block; width: 30px; height: 4px; background: var(--indigo); margin-bottom: 10px; border-radius: 2px; }
+  .kicker-bar.on-dark { background: var(--emerald); }
+
+  .app { display: grid; grid-template-columns: 240px 1fr; min-height: 100vh; }
+
+  /* ---------- SIDEBAR (zone sombre) ---------- */
+  .sidebar { background: var(--ink); padding: 26px 20px; display: flex; flex-direction: column; }
+  .logo { font-size: 17px; font-weight: 900; color: var(--on-dark); margin-bottom: 40px; }
+  .logo span { color: var(--indigo); }
+
+  .nav-group { margin-bottom: 28px; }
+  .nav-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--on-dark-muted); margin-bottom: 10px; padding: 0 10px; }
+  .nav-item {
+    display: flex; align-items: center; gap: 11px;
+    padding: 10px 10px; border-radius: var(--radius);
+    color: var(--on-dark-muted); text-decoration: none; font-size: 14px; font-weight: 600;
+    margin-bottom: 2px;
+  }
+  .nav-item svg { width: 17px; height: 17px; flex-shrink: 0; }
+  .nav-item.active { background: var(--ink-2); color: var(--on-dark); }
+  .nav-item:hover:not(.active) { color: var(--on-dark); }
+
+  .sidebar-foot { margin-top: auto; padding-top: 20px; border-top: 1px solid rgba(255,255,255,0.08); }
+  .org-chip { display: flex; align-items: center; gap: 10px; }
+  .org-avatar { width: 32px; height: 32px; border-radius: 50%; background: var(--indigo); display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 800; color: #fff; }
+  .org-name { font-size: 13px; font-weight: 700; color: var(--on-dark); }
+  .org-role { font-size: 11px; color: var(--on-dark-muted); }
+
+  /* ---------- MAIN ---------- */
+  main { padding: 30px 36px 50px; }
+
+  .topbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 30px; }
+  .page-title { font-size: 24px; font-weight: 900; text-transform: uppercase; letter-spacing: -0.01em; }
+  .topbar-actions { display: flex; align-items: center; gap: 14px; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 11px 18px; border-radius: var(--radius);
+    font-weight: 700; font-size: 13px; text-decoration: none; border: 1.5px solid transparent; cursor: pointer;
+  }
+  .btn-primary { background: var(--indigo); color: #fff; }
+  .btn-ghost { background: var(--card); color: var(--text); border-color: var(--border); }
+  .icon-btn { width: 38px; height: 38px; border-radius: var(--radius); border: 1.5px solid var(--border); background: var(--card); display: flex; align-items: center; justify-content: center; position: relative; }
+  .icon-btn svg { width: 17px; height: 17px; color: var(--text-muted); }
+  .dot-alert { position: absolute; top: 8px; right: 8px; width: 6px; height: 6px; border-radius: 50%; background: var(--indigo); }
+
+  /* ---------- METRICS ---------- */
+  .metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 30px; }
+  .metric-card { background: var(--card); border: 1.5px solid var(--border); border-radius: var(--radius); padding: 18px 20px; }
+  .metric-label { font-size: 12px; font-weight: 600; color: var(--text-muted); margin-bottom: 10px; }
+  .metric-value { font-size: 26px; font-weight: 900; margin-bottom: 8px; }
+  .metric-sub { font-size: 12px; color: var(--emerald); font-weight: 700; display: flex; align-items: center; gap: 5px; }
+  .metric-sub.neutral { color: var(--text-muted); }
+  .progress-track { height: 5px; border-radius: 3px; background: var(--bg); overflow: hidden; margin-top: 10px; }
+  .progress-fill { height: 100%; background: var(--indigo); border-radius: 3px; }
+
+  /* ---------- GRID PRINCIPAL ---------- */
+  .main-grid { display: grid; grid-template-columns: 1.6fr 1fr; gap: 18px; }
+
+  .panel { background: var(--card); border: 1.5px solid var(--border); border-radius: var(--radius); padding: 22px; margin-bottom: 18px; }
+  .panel-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
+  .panel-title { font-size: 13px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; }
+  .panel-link { font-size: 12px; font-weight: 700; color: var(--indigo); text-decoration: none; }
+
+  /* chart */
+  .chart-row { display: flex; align-items: flex-end; gap: 12px; height: 140px; margin-bottom: 10px; }
+  .bar-col { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 8px; height: 100%; justify-content: flex-end; }
+  .bar { width: 100%; background: var(--indigo); border-radius: 3px 3px 0 0; }
+  .bar.muted { background: #F0DCE4; }
+  .bar-label { font-size: 11px; color: var(--text-muted); font-weight: 600; }
+
+  /* table */
+  table { width: 100%; border-collapse: collapse; }
+  th { text-align: left; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); padding: 0 0 10px; border-bottom: 1.5px solid var(--border); }
+  td { padding: 13px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
+  tr:last-child td { border-bottom: none; }
+  .event-name { font-weight: 700; }
+  .event-date { font-size: 12px; color: var(--text-muted); }
+
+  .status { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 700; padding: 4px 9px; border-radius: 4px; }
+  .status-live { background: rgba(15,191,143,0.12); color: #0A8A66; }
+  .status-draft { background: rgba(255,182,39,0.15); color: #A66B08; }
+  .status-ended { background: rgba(23,18,31,0.08); color: var(--text-muted); }
+  .status-dot { width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+
+  /* right column */
+  .team-row { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--border); }
+  .team-row:last-child { border-bottom: none; }
+  .avatar { width: 30px; height: 30px; border-radius: 50%; background: var(--ink-2); color: var(--on-dark); display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 800; }
+  .team-name { font-size: 13px; font-weight: 700; }
+  .team-role { font-size: 11px; color: var(--text-muted); }
+
+  .payout-row { padding: 12px 0; border-bottom: 1px solid var(--border); }
+  .payout-row:last-child { border-bottom: none; }
+  .payout-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
+  .payout-event { font-size: 13px; font-weight: 700; }
+  .payout-amount { font-size: 13px; font-weight: 800; }
+  .payout-note { font-size: 11px; color: var(--text-muted); display: flex; align-items: center; gap: 5px; }
+  .live-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--emerald); animation: blink 2s ease-in-out infinite; }
+  @keyframes blink { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+
+  @media (max-width: 980px) {
+    .app { grid-template-columns: 1fr; }
+    .sidebar { display: none; }
+    .metrics { grid-template-columns: repeat(2, 1fr); }
+    .main-grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<div class="app">
+
+  <aside class="sidebar">
+    <div class="logo">zen<span>events</span></div>
+
+    <div class="nav-group">
+      <div class="nav-label">Général</div>
+      <a href="#" class="nav-item active">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
+        Tableau de bord
+      </a>
+      <a href="#" class="nav-item">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18"/></svg>
+        Évènements
+      </a>
+      <a href="#" class="nav-item">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7l8-4 8 4v10l-8 4-8-4z"/><path d="M4 7l8 4 8-4"/><path d="M12 11v10"/></svg>
+        Billets
+      </a>
+    </div>
+
+    <div class="nav-group">
+      <div class="nav-label">Gestion</div>
+      <a href="#" class="nav-item">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="8" r="3.2"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/><circle cx="18" cy="9" r="2.4"/><path d="M15.5 14.2c2.6.4 4.5 2.6 4.5 5.8"/></svg>
+        Équipe
+      </a>
+      <a href="#" class="nav-item">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2.5" y="6" width="19" height="13" rx="2"/><path d="M2.5 10h19"/><path d="M6 15h4"/></svg>
+        Reversements
+      </a>
+      <a href="#" class="nav-item">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 12.9a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.6-1h-.2a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.6-1.1 1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3h.1a1.7 1.7 0 0 0 1-1.6v-.2a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9v.1a1.7 1.7 0 0 0 1.6 1h.2a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.6 1z"/></svg>
+        Paramètres
+      </a>
+    </div>
+
+    <div class="sidebar-foot">
+      <div class="org-chip">
+        <div class="org-avatar">BE</div>
+        <div>
+          <div class="org-name">Baobab Events</div>
+          <div class="org-role">Organisateur</div>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <main>
+    <div class="topbar">
+      <div>
+        <span class="kicker-bar"></span>
+        <div class="page-title">Tableau de bord</div>
+      </div>
+      <div class="topbar-actions">
+        <div class="icon-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8a6 6 0 0 0-12 0c0 5-2 6-2 6h16s-2-1-2-6"/><path d="M10 20a2 2 0 0 0 4 0"/></svg><span class="dot-alert"></span></div>
+        <a href="#" class="btn btn-ghost">Exporter</a>
+        <a href="#" class="btn btn-primary">Créer un évènement</a>
+      </div>
+    </div>
+
+    <div class="metrics">
+      <div class="metric-card">
+        <div class="metric-label">Billets vendus</div>
+        <div class="metric-value">342 <span style="font-size:14px; color:var(--text-muted); font-weight:700;">/ 500</span></div>
+        <div class="progress-track"><div class="progress-fill" style="width:68%;"></div></div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Revenus nets</div>
+        <div class="metric-value">1 710 000 <span style="font-size:13px;">FCFA</span></div>
+        <div class="metric-sub"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M18 15l-6-6-6 6"/></svg>+12% vs semaine dernière</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Taux de remplissage</div>
+        <div class="metric-value">68%</div>
+        <div class="metric-sub neutral">3 évènements actifs</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Prochain reversement</div>
+        <div class="metric-value" style="font-size:20px;">24 déc</div>
+        <div class="metric-sub neutral">Déclenché après la fin de l'évènement</div>
+      </div>
+    </div>
+
+    <div class="main-grid">
+      <div>
+        <div class="panel">
+          <div class="panel-head">
+            <div class="panel-title">Ventes — 7 derniers jours</div>
+            <a href="#" class="panel-link">Voir le détail</a>
+          </div>
+          <div class="chart-row">
+            <div class="bar-col"><div class="bar" style="height:38%;"></div><div class="bar-label">Lun</div></div>
+            <div class="bar-col"><div class="bar" style="height:55%;"></div><div class="bar-label">Mar</div></div>
+            <div class="bar-col"><div class="bar" style="height:44%;"></div><div class="bar-label">Mer</div></div>
+            <div class="bar-col"><div class="bar" style="height:70%;"></div><div class="bar-label">Jeu</div></div>
+            <div class="bar-col"><div class="bar" style="height:60%;"></div><div class="bar-label">Ven</div></div>
+            <div class="bar-col"><div class="bar" style="height:92%;"></div><div class="bar-label">Sam</div></div>
+            <div class="bar-col"><div class="bar muted" style="height:30%;"></div><div class="bar-label">Dim</div></div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-head">
+            <div class="panel-title">Vos évènements</div>
+            <a href="#" class="panel-link">Voir tout</a>
+          </div>
+          <table>
+            <thead>
+              <tr><th>Évènement</th><th>Statut</th><th>Billets</th><th>Revenus</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><div class="event-name">Baobab Music Fest</div><div class="event-date">14 déc · Dakar</div></td>
+                <td><span class="status status-live"><span class="status-dot"></span>Publié</span></td>
+                <td>210 / 300</td>
+                <td>1 155 000 FCFA</td>
+              </tr>
+              <tr>
+                <td><div class="event-name">Nuit Afrobeats</div><div class="event-date">21 déc · Almadies</div></td>
+                <td><span class="status status-draft"><span class="status-dot"></span>Brouillon</span></td>
+                <td>0 / 150</td>
+                <td>—</td>
+              </tr>
+              <tr>
+                <td><div class="event-name">Sargal Gospel Live</div><div class="event-date">28 nov · Thiès</div></td>
+                <td><span class="status status-ended"><span class="status-dot"></span>Terminé</span></td>
+                <td>132 / 150</td>
+                <td>528 000 FCFA</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div>
+        <div class="panel">
+          <div class="panel-head">
+            <div class="panel-title">Équipe active</div>
+            <a href="#" class="panel-link">Gérer</a>
+          </div>
+          <div class="team-row"><div class="avatar">FD</div><div><div class="team-name">Fatou Diop</div><div class="team-role">Contrôleur</div></div></div>
+          <div class="team-row"><div class="avatar">MK</div><div><div class="team-name">Moussa Kane</div><div class="team-role">Vendeur</div></div></div>
+          <div class="team-row"><div class="avatar">AS</div><div><div class="team-name">Awa Sarr</div><div class="team-role">Co-organisatrice</div></div></div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-head">
+            <div class="panel-title">Reversements</div>
+          </div>
+          <div class="payout-row">
+            <div class="payout-top"><span class="payout-event">Sargal Gospel Live</span><span class="payout-amount">528 000 FCFA</span></div>
+            <div class="payout-note"><span class="live-dot"></span>Versé le 29 nov</div>
+          </div>
+          <div class="payout-row">
+            <div class="payout-top"><span class="payout-event">Baobab Music Fest</span><span class="payout-amount">1 155 000 FCFA</span></div>
+            <div class="payout-note">En attente — après le 14 déc</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+</div>
+
+</body>
+</html>

@@ -1,3 +1,45 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Design tokens — docs/DESIGN_SYSTEM.md §2. Every color in this app must
+   reference one of these, never a hardcoded hex value. */
+:root {
+  --bg: #f6f4ee;
+  --card: #ffffff;
+  --ink: #17121f;
+  --ink-2: #241c33;
+  --text: #17121f;
+  --text-muted: #6e6779;
+  --on-dark: #f6f4ee;
+  --on-dark-muted: #afa6be;
+  --indigo: #5533e0;
+  --amber: #ffb627;
+  --emerald: #0fbf8f;
+  --border: rgba(23, 18, 31, 0.12);
+  --radius: 6px;
+
+  /* Status badge soft backgrounds — literal values from the validated
+     mockup (design/mockups/zen-events-dashboard-mockup.html .status-*),
+     kept as their own tokens rather than a Tailwind opacity modifier since
+     the base tokens above are plain hex, not the RGB-channel triples that
+     modifier syntax needs. */
+  --emerald-soft: rgba(15, 191, 143, 0.12);
+  --emerald-strong: #0a8a66;
+  --amber-soft: rgba(255, 182, 39, 0.15);
+  --amber-strong: #a66b08;
+  --ink-soft: rgba(23, 18, 31, 0.08);
+
+  /* Event category colors — visual variety only, not semantic. */
+  --cat-indigo: #5533e0;
+  --cat-amber: #ffb627;
+  --cat-emerald: #0fbf8f;
+  --cat-rose: #e0475c;
+  --cat-orange: #ff7a3d;
+  --cat-teal: #17a8c4;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+}

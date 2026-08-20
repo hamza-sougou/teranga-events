@@ -179,4 +179,6 @@ Corrections à apporter suite à la section 5 :
 - Ajouter la table `payouts` (voir 5.6).
 - Ajouter un moyen de reversement mobile money par organisation (voir 5.6).
 
+> **✅ Ces quatre corrections sont appliquées** dans `db/schema.sql` et `backend/prisma/schema.prisma` (voir `PROGRESS.md` §1 pour le détail des migrations). Cette section reste la trace de la décision d'origine, pas une tâche en attente.
+
 Rappel technique (section 5.4) : toute vérification d'IPN PayDunya doit comparer le hash reçu au SHA-512 de la clé principale avant tout traitement — ne jamais faire confiance à une requête entrante sans cette vérification.
