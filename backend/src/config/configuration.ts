@@ -31,4 +31,14 @@ export default () => ({
     fromEmail: process.env.SMTP_FROM_EMAIL,
   },
   frontendUrl: process.env.FRONTEND_URL,
+  // Comma-separated allow-list — falls back to just FRONTEND_URL so a
+  // fresh checkout of this repo (only FRONTEND_URL set) still has a
+  // correctly-scoped CORS policy rather than an accidental wildcard.
+  corsOrigins: (process.env.CORS_ORIGINS ?? process.env.FRONTEND_URL ?? '')
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean),
+  sentry: {
+    dsn: process.env.SENTRY_DSN,
+  },
 });

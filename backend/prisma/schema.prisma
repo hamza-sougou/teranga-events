@@ -28,6 +28,13 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
+  // NOTE: `directUrl = env("DIRECT_DATABASE_URL")` (for PgBouncer — migrations
+  // need a direct, unpooled connection) is NOT added yet on purpose: Prisma
+  // rejects an empty string for a declared env() datasource field outright
+  // (confirmed via `prisma validate`), so it can't ship as "optional, falls
+  // back to `url`" the way DATABASE_URL vs DIRECT_DATABASE_URL suggests.
+  // Add this line once a real pooled staging/prod DATABASE_URL exists —
+  // see docs/INFRASTRUCTURE.md §3.
 }
 
 // ============================================================

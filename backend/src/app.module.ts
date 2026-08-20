@@ -1,8 +1,14 @@
 import { Module } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import { LoggerModule } from 'nestjs-pino';
 import configuration from './config/configuration';
+import { validate } from './config/env.validation';
+import { loggerOptions } from './config/logger.config';
 import { PrismaModule } from './prisma/prisma.module';
+import { HealthModule } from './health/health.module';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
 import { TeamsModule } from './teams/teams.module';
@@ -16,11 +22,22 @@ import { ScanModule } from './scan/scan.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { StatsModule } from './stats/stats.module';
 
+const isTestEnv = process.env.NODE_ENV === 'test';
+
 @Module({
   imports: [
-    ConfigModule.forRoot({ isGlobal: true, load: [configuration] }),
+    ConfigModule.forRoot({ isGlobal: true, load: [configuration], validate }),
+    LoggerModule.forRoot(loggerOptions),
     ScheduleModule.forRoot(),
+    // Generous global default (protects against genuine abuse); the
+    // sensitive endpoints (auth, checkout) carry their own tighter
+    // @Throttle(...) override. Disabled entirely under NODE_ENV=test — the
+    // e2e suite calls these routes dozens of times per file (registerOrganizer()
+    // etc.), and no threshold tuned for that traffic would still mean
+    // anything in production.
+    ThrottlerModule.forRoot([{ ttl: 60_000, limit: 100 }]),
     PrismaModule,
+    HealthModule,
     AuthModule,
     UsersModule,
     TeamsModule,
@@ -34,5 +51,6 @@ import { StatsModule } from './stats/stats.module';
     NotificationsModule,
     StatsModule,
   ],
+  providers: isTestEnv ? [] : [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })
 export class AppModule {}

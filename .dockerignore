@@ -1,0 +1,9 @@
+node_modules
+backend/node_modules
+backend/dist
+web
+.git
+.env
+backend/.env
+*.md
+.claude

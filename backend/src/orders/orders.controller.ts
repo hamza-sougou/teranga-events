@@ -1,4 +1,5 @@
 import { Body, Controller, Get, Param, Post } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { OrdersService } from './orders.service';
 import { PreviewOrderDto } from './dto/preview-order.dto';
 import { CheckoutDto } from './dto/checkout.dto';
@@ -15,6 +16,7 @@ export class OrdersController {
   }
 
   @Post()
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
   checkout(@Body() dto: CheckoutDto) {
     return this.ordersService.checkout(dto);
   }
