@@ -158,6 +158,14 @@ CREATE TABLE events (
   description       TEXT,
   venue_name        VARCHAR(200),
   address           TEXT,
+  -- Géolocalisation (recherche OpenStreetMap/Nominatim en développement,
+  -- Google Maps prévu en production derrière la même interface backend —
+  -- voir backend/src/geocoding/). latitude/longitude toujours pairées
+  -- (jamais l'une sans l'autre), voir chk_events_lat_lng_paired ci-dessous.
+  country           VARCHAR(100),
+  city              VARCHAR(100),
+  latitude          DECIMAL(9,6),
+  longitude         DECIMAL(9,6),
   category_id       UUID REFERENCES event_categories(id),
   status            event_status NOT NULL DEFAULT 'draft',
   start_at          TIMESTAMPTZ NOT NULL,
@@ -166,7 +174,8 @@ CREATE TABLE events (
   created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
 
-  CHECK (end_at > start_at)
+  CHECK (end_at > start_at),
+  CONSTRAINT chk_events_lat_lng_paired CHECK ((latitude IS NULL) = (longitude IS NULL))
 );
 
 CREATE INDEX idx_events_org_status ON events (organization_id, status);

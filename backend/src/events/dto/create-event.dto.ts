@@ -1,4 +1,4 @@
-import { IsDateString, IsOptional, IsString, IsUUID, Matches, MinLength } from 'class-validator';
+import { IsDateString, IsLatitude, IsLongitude, IsOptional, IsString, IsUUID, Matches, MinLength } from 'class-validator';
 
 export class CreateEventDto {
   @MinLength(2)
@@ -20,6 +20,22 @@ export class CreateEventDto {
   @IsOptional()
   @IsString()
   address?: string;
+
+  @IsOptional()
+  @IsString()
+  country?: string;
+
+  @IsOptional()
+  @IsString()
+  city?: string;
+
+  @IsOptional()
+  @IsLatitude()
+  latitude?: number;
+
+  @IsOptional()
+  @IsLongitude()
+  longitude?: number;
 
   @IsOptional()
   @IsUUID()

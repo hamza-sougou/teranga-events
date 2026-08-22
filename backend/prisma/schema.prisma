@@ -302,6 +302,10 @@ model Event {
   description    String?     @db.Text
   venueName      String?     @map("venue_name") @db.VarChar(200)
   address        String?     @db.Text
+  country        String?     @db.VarChar(100)
+  city           String?     @db.VarChar(100)
+  latitude       Decimal?    @db.Decimal(9, 6)
+  longitude      Decimal?    @db.Decimal(9, 6)
   categoryId     String?     @map("category_id") @db.Uuid
   status         EventStatus @default(DRAFT)
   startAt        DateTime    @map("start_at") @db.Timestamptz(6)
@@ -319,7 +323,8 @@ model Event {
   payout        Payout?
   media         EventMedia[]
 
-  // CHECK (end_at > start_at) — see db/schema.sql, not enforced by Prisma
+  // CHECK (end_at > start_at), CHECK ((latitude IS NULL) = (longitude IS NULL))
+  // — chk_events_lat_lng_paired, see db/schema.sql, not enforced by Prisma
   @@index([organizationId, status], map: "idx_events_org_status")
   @@map("events")
 }

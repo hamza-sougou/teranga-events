@@ -212,6 +212,93 @@ describe('Events (e2e)', () => {
     });
   });
 
+  describe('geolocation', () => {
+    it('round-trips country/city/latitude/longitude through create and the detail read', async () => {
+      const { accessToken, organizationId } = await registerOrganizer();
+      const payload = { ...eventPayload(), country: 'Sénégal', city: 'Dakar', latitude: 14.6928, longitude: -17.4467 };
+
+      const created = await request(app.getHttpServer())
+        .post(`/organizations/${organizationId}/events`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send(payload)
+        .expect(201);
+
+      expect(created.body.country).toBe('Sénégal');
+      expect(created.body.city).toBe('Dakar');
+      expect(Number(created.body.latitude)).toBeCloseTo(14.6928);
+      expect(Number(created.body.longitude)).toBeCloseTo(-17.4467);
+
+      const detail = await request(app.getHttpServer())
+        .get(`/organizations/${organizationId}/events/${created.body.id}`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(200);
+
+      expect(Number(detail.body.latitude)).toBeCloseTo(14.6928);
+      expect(Number(detail.body.longitude)).toBeCloseTo(-17.4467);
+    });
+
+    it('defaults country to Sénégal when omitted on create', async () => {
+      const { accessToken, organizationId } = await registerOrganizer();
+
+      const created = await request(app.getHttpServer())
+        .post(`/organizations/${organizationId}/events`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send(eventPayload())
+        .expect(201);
+
+      expect(created.body.country).toBe('Sénégal');
+      expect(created.body.city).toBeNull();
+      expect(created.body.latitude).toBeNull();
+      expect(created.body.longitude).toBeNull();
+    });
+
+    it('rejects create with only latitude and no longitude with 400', async () => {
+      const { accessToken, organizationId } = await registerOrganizer();
+      const payload = { ...eventPayload(), latitude: 14.6928 };
+
+      await request(app.getHttpServer())
+        .post(`/organizations/${organizationId}/events`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send(payload)
+        .expect(400);
+    });
+
+    it('rejects update with only longitude and no latitude with 400', async () => {
+      const { accessToken, organizationId } = await registerOrganizer();
+      const created = await request(app.getHttpServer())
+        .post(`/organizations/${organizationId}/events`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send(eventPayload())
+        .expect(201);
+
+      await request(app.getHttpServer())
+        .patch(`/organizations/${organizationId}/events/${created.body.id}`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ longitude: -17.4467 })
+        .expect(400);
+    });
+
+    it('leaves geolocation fields null after an unrelated update on a legacy event', async () => {
+      const { accessToken, organizationId } = await registerOrganizer();
+      const created = await request(app.getHttpServer())
+        .post(`/organizations/${organizationId}/events`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send(eventPayload())
+        .expect(201);
+
+      const updated = await request(app.getHttpServer())
+        .patch(`/organizations/${organizationId}/events/${created.body.id}`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ name: 'Nom mis à jour' })
+        .expect(200);
+
+      expect(updated.body.name).toBe('Nom mis à jour');
+      expect(updated.body.city).toBeNull();
+      expect(updated.body.latitude).toBeNull();
+      expect(updated.body.longitude).toBeNull();
+    });
+  });
+
   it('rejects an illegal status transition with 400', async () => {
     const { accessToken, organizationId } = await registerOrganizer();
     const created = await request(app.getHttpServer())

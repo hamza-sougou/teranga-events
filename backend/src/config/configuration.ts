@@ -48,4 +48,11 @@ export default () => ({
     bucket: process.env.R2_BUCKET_NAME,
     publicUrl: process.env.R2_PUBLIC_URL,
   },
+  nominatim: {
+    baseUrl: process.env.NOMINATIM_BASE_URL ?? 'https://nominatim.openstreetmap.org',
+    // Nominatim's usage policy requires a User-Agent identifying the app and
+    // a way to reach its operator — see docs/INFRASTRUCTURE.md and
+    // backend/src/geocoding/.
+    userAgent: process.env.NOMINATIM_USER_AGENT ?? 'ZenEvents/1.0 (sougouhamza@gmail.com)',
+  },
 });

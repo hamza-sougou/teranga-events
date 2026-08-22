@@ -19,6 +19,10 @@ const PUBLIC_EVENT_SELECT = {
   description: true,
   venueName: true,
   address: true,
+  country: true,
+  city: true,
+  latitude: true,
+  longitude: true,
   category: {
     select: { id: true, slug: true, label: true, icon: true, colorToken: true },
   },
@@ -39,6 +43,7 @@ export class EventsService {
 
   async create(organizationId: string, userId: string, dto: CreateEventDto) {
     this.assertDateOrder(dto.startAt, dto.endAt);
+    this.assertCoordinatesPaired(dto.latitude, dto.longitude);
     if (dto.categoryId) {
       await this.assertCategoryExists(dto.categoryId);
     }
@@ -53,6 +58,10 @@ export class EventsService {
           description: dto.description,
           venueName: dto.venueName,
           address: dto.address,
+          country: dto.country ?? 'Sénégal',
+          city: dto.city,
+          latitude: dto.latitude,
+          longitude: dto.longitude,
           categoryId: dto.categoryId,
           startAt: new Date(dto.startAt),
           endAt: new Date(dto.endAt),
@@ -98,6 +107,7 @@ export class EventsService {
     const startAt = dto.startAt ?? event.startAt.toISOString();
     const endAt = dto.endAt ?? event.endAt.toISOString();
     this.assertDateOrder(startAt, endAt);
+    this.assertCoordinatesPaired(dto.latitude, dto.longitude);
     if (dto.categoryId) {
       await this.assertCategoryExists(dto.categoryId);
     }
@@ -130,6 +140,10 @@ export class EventsService {
           description: dto.description,
           venueName: dto.venueName,
           address: dto.address,
+          country: dto.country,
+          city: dto.city,
+          latitude: dto.latitude,
+          longitude: dto.longitude,
           categoryId: dto.categoryId,
           startAt: dto.startAt ? new Date(dto.startAt) : undefined,
           endAt: dto.endAt ? new Date(dto.endAt) : undefined,
@@ -168,6 +182,14 @@ export class EventsService {
   private assertDateOrder(startAt: string, endAt: string) {
     if (new Date(endAt).getTime() <= new Date(startAt).getTime()) {
       throw new BadRequestException('endAt must be after startAt');
+    }
+  }
+
+  // Application-level twin of chk_events_lat_lng_paired (db/schema.sql) —
+  // gives a clean 400 instead of a raw Postgres constraint-violation error.
+  private assertCoordinatesPaired(latitude?: number, longitude?: number) {
+    if ((latitude == null) !== (longitude == null)) {
+      throw new BadRequestException('latitude and longitude must be provided together');
     }
   }
 
