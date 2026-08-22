@@ -19,9 +19,15 @@ const PUBLIC_EVENT_SELECT = {
   description: true,
   venueName: true,
   address: true,
-  category: true,
+  category: {
+    select: { id: true, slug: true, label: true, icon: true, colorToken: true },
+  },
   startAt: true,
   endAt: true,
+  media: {
+    select: { id: true, type: true, url: true },
+    orderBy: { createdAt: 'asc' },
+  },
 } satisfies Prisma.EventSelect;
 
 @Injectable()
@@ -33,6 +39,9 @@ export class EventsService {
 
   async create(organizationId: string, userId: string, dto: CreateEventDto) {
     this.assertDateOrder(dto.startAt, dto.endAt);
+    if (dto.categoryId) {
+      await this.assertCategoryExists(dto.categoryId);
+    }
 
     try {
       return await this.prisma.event.create({
@@ -44,10 +53,11 @@ export class EventsService {
           description: dto.description,
           venueName: dto.venueName,
           address: dto.address,
-          category: dto.category,
+          categoryId: dto.categoryId,
           startAt: new Date(dto.startAt),
           endAt: new Date(dto.endAt),
         },
+        include: { category: true },
       });
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
@@ -58,7 +68,7 @@ export class EventsService {
   }
 
   findAllForOrganization(organizationId: string) {
-    return this.prisma.event.findMany({ where: { organizationId } });
+    return this.prisma.event.findMany({ where: { organizationId }, include: { category: true } });
   }
 
   async findOneForOrganization(organizationId: string, eventId: string) {
@@ -69,17 +79,44 @@ export class EventsService {
     return event;
   }
 
+  // Separate from findOneForOrganization on purpose: that method is the lean
+  // existence/ownership check reused by every mutating method in this module
+  // and in TicketTypesService/EventMediaService — adding a media join there
+  // would join media on every ticket-type or media create/update too. This
+  // one backs only the organizer detail view (GET .../events/:eventId).
+  async findDetailForOrganization(organizationId: string, eventId: string) {
+    await this.findOneForOrganization(organizationId, eventId);
+    return this.prisma.event.findFirst({
+      where: { id: eventId, organizationId },
+      include: { category: true, media: { orderBy: { createdAt: 'asc' } } },
+    });
+  }
+
   async update(organizationId: string, eventId: string, dto: UpdateEventDto) {
     const event = await this.findOneForOrganization(organizationId, eventId);
 
     const startAt = dto.startAt ?? event.startAt.toISOString();
     const endAt = dto.endAt ?? event.endAt.toISOString();
     this.assertDateOrder(startAt, endAt);
+    if (dto.categoryId) {
+      await this.assertCategoryExists(dto.categoryId);
+    }
 
     if (dto.status && dto.status !== event.status) {
       const allowed = ALLOWED_TRANSITIONS[event.status];
       if (!allowed.includes(dto.status)) {
         throw new BadRequestException(`Cannot transition event from ${event.status} to ${dto.status}`);
+      }
+
+      // At least one image is required to publish — never for a draft.
+      // See docs/SPEC.md and db/schema.sql section 4B.
+      if (dto.status === EventStatus.PUBLISHED) {
+        const imageCount = await this.prisma.eventMedia.count({
+          where: { eventId, type: 'IMAGE' },
+        });
+        if (imageCount === 0) {
+          throw new BadRequestException('At least one image is required to publish an event');
+        }
       }
     }
 
@@ -93,11 +130,12 @@ export class EventsService {
           description: dto.description,
           venueName: dto.venueName,
           address: dto.address,
-          category: dto.category,
+          categoryId: dto.categoryId,
           startAt: dto.startAt ? new Date(dto.startAt) : undefined,
           endAt: dto.endAt ? new Date(dto.endAt) : undefined,
           status: dto.status,
         },
+        include: { category: true },
       });
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
@@ -130,6 +168,13 @@ export class EventsService {
   private assertDateOrder(startAt: string, endAt: string) {
     if (new Date(endAt).getTime() <= new Date(startAt).getTime()) {
       throw new BadRequestException('endAt must be after startAt');
+    }
+  }
+
+  private async assertCategoryExists(categoryId: string) {
+    const category = await this.prisma.eventCategory.findUnique({ where: { id: categoryId } });
+    if (!category) {
+      throw new BadRequestException('Unknown categoryId');
     }
   }
 }

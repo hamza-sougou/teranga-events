@@ -69,6 +69,35 @@ describe('Events (e2e)', () => {
     };
   }
 
+  // Seeded directly via Prisma, not through the real upload flow — this
+  // suite tests the publish-gate business rule, not R2 itself (see
+  // event-media.e2e-spec.ts for the upload endpoints).
+  function seedImage(eventId: string) {
+    return prisma.eventMedia.create({
+      data: {
+        eventId,
+        type: 'IMAGE',
+        storageKey: `test/${eventId}.jpg`,
+        url: `https://example.com/test/${eventId}.jpg`,
+        mimeType: 'image/jpeg',
+        sizeBytes: 1024,
+      },
+    });
+  }
+
+  function seedVideo(eventId: string) {
+    return prisma.eventMedia.create({
+      data: {
+        eventId,
+        type: 'VIDEO',
+        storageKey: `test/${eventId}.mp4`,
+        url: `https://example.com/test/${eventId}.mp4`,
+        mimeType: 'video/mp4',
+        sizeBytes: 4096,
+      },
+    });
+  }
+
   it('creates an event as OWNER', async () => {
     const { accessToken, organizationId } = await registerOrganizer();
     const payload = eventPayload();
@@ -155,6 +184,34 @@ describe('Events (e2e)', () => {
     expect(res.body[0].slug).toBe(payload.slug);
   });
 
+  describe('categoryId', () => {
+    it('rejects a categoryId that matches no category with 400', async () => {
+      const { accessToken, organizationId } = await registerOrganizer();
+      const payload = { ...eventPayload(), categoryId: randomUUID() };
+
+      await request(app.getHttpServer())
+        .post(`/organizations/${organizationId}/events`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send(payload)
+        .expect(400);
+    });
+
+    it('accepts a real categoryId and returns the joined category', async () => {
+      const { accessToken, organizationId } = await registerOrganizer();
+      const concert = await prisma.eventCategory.findFirstOrThrow({ where: { slug: 'concert' } });
+      const payload = { ...eventPayload(), categoryId: concert.id };
+
+      const res = await request(app.getHttpServer())
+        .post(`/organizations/${organizationId}/events`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send(payload)
+        .expect(201);
+
+      expect(res.body.categoryId).toBe(concert.id);
+      expect(res.body.category).toMatchObject({ id: concert.id, slug: 'concert', label: 'Concert' });
+    });
+  });
+
   it('rejects an illegal status transition with 400', async () => {
     const { accessToken, organizationId } = await registerOrganizer();
     const created = await request(app.getHttpServer())
@@ -168,6 +225,72 @@ describe('Events (e2e)', () => {
       .set('Authorization', `Bearer ${accessToken}`)
       .send({ status: 'COMPLETED' })
       .expect(400);
+  });
+
+  describe('publish requires at least one image', () => {
+    it('rejects publishing a draft with zero media with 400', async () => {
+      const { accessToken, organizationId } = await registerOrganizer();
+      const created = await request(app.getHttpServer())
+        .post(`/organizations/${organizationId}/events`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send(eventPayload())
+        .expect(201);
+
+      await request(app.getHttpServer())
+        .patch(`/organizations/${organizationId}/events/${created.body.id}`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ status: 'PUBLISHED' })
+        .expect(400);
+    });
+
+    it('does not allow a video alone to satisfy the image requirement', async () => {
+      const { accessToken, organizationId } = await registerOrganizer();
+      const created = await request(app.getHttpServer())
+        .post(`/organizations/${organizationId}/events`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send(eventPayload())
+        .expect(201);
+      await seedVideo(created.body.id);
+
+      await request(app.getHttpServer())
+        .patch(`/organizations/${organizationId}/events/${created.body.id}`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ status: 'PUBLISHED' })
+        .expect(400);
+    });
+
+    it('does not block saving a draft with zero media (only publish is gated)', async () => {
+      const { accessToken, organizationId } = await registerOrganizer();
+      const created = await request(app.getHttpServer())
+        .post(`/organizations/${organizationId}/events`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send(eventPayload())
+        .expect(201);
+
+      await request(app.getHttpServer())
+        .patch(`/organizations/${organizationId}/events/${created.body.id}`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ venueName: 'Nouveau lieu' })
+        .expect(200);
+    });
+
+    it('allows publishing once at least one image exists', async () => {
+      const { accessToken, organizationId } = await registerOrganizer();
+      const created = await request(app.getHttpServer())
+        .post(`/organizations/${organizationId}/events`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send(eventPayload())
+        .expect(201);
+      await seedImage(created.body.id);
+
+      const res = await request(app.getHttpServer())
+        .patch(`/organizations/${organizationId}/events/${created.body.id}`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ status: 'PUBLISHED' })
+        .expect(200);
+
+      expect(res.body.status).toBe('PUBLISHED');
+    });
   });
 
   describe('public event page', () => {
@@ -191,6 +314,7 @@ describe('Events (e2e)', () => {
         .set('Authorization', `Bearer ${accessToken}`)
         .send(payload)
         .expect(201);
+      await seedImage(created.body.id);
 
       await request(app.getHttpServer())
         .patch(`/organizations/${organizationId}/events/${created.body.id}`)

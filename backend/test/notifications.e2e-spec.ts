@@ -89,8 +89,24 @@ describe('Notifications (e2e)', () => {
       startAt,
       endAt,
     });
+    await seedImage(event.id);
     await eventsService.update(organizationId, event.id, { status: EventStatus.PUBLISHED });
     return prisma.event.findUniqueOrThrow({ where: { id: event.id } });
+  }
+
+  // Publishing now requires at least one image (events.e2e-spec.ts covers the
+  // rule itself) — seed one directly, this file isn't testing that rule.
+  function seedImage(eventId: string) {
+    return prisma.eventMedia.create({
+      data: {
+        eventId,
+        type: 'IMAGE',
+        storageKey: `test/${eventId}.jpg`,
+        url: `https://example.com/test/${eventId}.jpg`,
+        mimeType: 'image/jpeg',
+        sizeBytes: 1024,
+      },
+    });
   }
 
   async function createTicketType(organizationId: string, eventId: string) {

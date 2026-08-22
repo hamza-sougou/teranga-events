@@ -35,7 +35,7 @@ export class EventsController {
   @Get(':eventId')
   @OrgRoles(...ALL_MEMBER_ROLES)
   findOne(@Param('organizationId') organizationId: string, @Param('eventId') eventId: string) {
-    return this.eventsService.findOneForOrganization(organizationId, eventId);
+    return this.eventsService.findDetailForOrganization(organizationId, eventId);
   }
 
   @Patch(':eventId')

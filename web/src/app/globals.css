@@ -30,6 +30,15 @@
   --amber-strong: #a66b08;
   --ink-soft: rgba(23, 18, 31, 0.08);
 
+  /* Error/destructive — reuses the existing cat-rose hex rather than
+     inventing a new color, same literal-rgba reasoning as the pair above. */
+  --danger: #e0475c;
+  --danger-soft: rgba(224, 71, 92, 0.12);
+  --danger-strong: #b23347;
+
+  /* Modal backdrop. */
+  --overlay: rgba(23, 18, 31, 0.6);
+
   /* Event category colors — visual variety only, not semantic. */
   --cat-indigo: #5533e0;
   --cat-amber: #ffb627;

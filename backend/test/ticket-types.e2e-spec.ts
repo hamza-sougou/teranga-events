@@ -68,6 +68,21 @@ describe('TicketTypes (e2e)', () => {
     });
   }
 
+  // Publishing now requires at least one image (events.e2e-spec.ts covers the
+  // rule itself) — seed one directly, this file isn't testing that rule.
+  async function seedImage(eventId: string) {
+    return prisma.eventMedia.create({
+      data: {
+        eventId,
+        type: 'IMAGE',
+        storageKey: `test/${eventId}.jpg`,
+        url: `https://example.com/test/${eventId}.jpg`,
+        mimeType: 'image/jpeg',
+        sizeBytes: 1024,
+      },
+    });
+  }
+
   function ticketTypePayload() {
     return {
       name: 'Standard',
@@ -234,6 +249,7 @@ describe('TicketTypes (e2e)', () => {
         .set('Authorization', `Bearer ${accessToken}`)
         .send({ ...ticketTypePayload(), saleStart: '2020-01-01T00:00:00.000Z', saleEnd: '2030-01-01T00:00:00.000Z' })
         .expect(201);
+      await seedImage(event.id);
 
       await request(app.getHttpServer())
         .patch(`/organizations/${organizationId}/events/${event.id}`)

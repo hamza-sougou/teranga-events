@@ -81,11 +81,27 @@ describe('Payouts — organizer reversement (e2e)', () => {
       startAt: '2020-01-01T18:00:00.000Z',
       endAt: '2020-01-01T23:00:00.000Z',
     });
+    await seedImage(event.id);
     await eventsService.update(organizationId, event.id, { status: EventStatus.PUBLISHED });
     if (status === 'CANCELLED') {
       await eventsService.update(organizationId, event.id, { status: EventStatus.CANCELLED });
     }
     return event;
+  }
+
+  // Publishing now requires at least one image (events.e2e-spec.ts covers the
+  // rule itself) — seed one directly, this file isn't testing that rule.
+  function seedImage(eventId: string) {
+    return prisma.eventMedia.create({
+      data: {
+        eventId,
+        type: 'IMAGE',
+        storageKey: `test/${eventId}.jpg`,
+        url: `https://example.com/test/${eventId}.jpg`,
+        mimeType: 'image/jpeg',
+        sizeBytes: 1024,
+      },
+    });
   }
 
   async function createPaidOrder(eventId: string, subtotalAmount: number) {

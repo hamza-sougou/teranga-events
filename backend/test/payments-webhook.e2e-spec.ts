@@ -69,6 +69,21 @@ describe('PayDunya IPN webhook (e2e)', () => {
     await app.close();
   });
 
+  // Publishing now requires at least one image (events.e2e-spec.ts covers the
+  // rule itself) — seed one directly, this file isn't testing that rule.
+  function seedImage(eventId: string) {
+    return prisma.eventMedia.create({
+      data: {
+        eventId,
+        type: 'IMAGE',
+        storageKey: `test/${eventId}.jpg`,
+        url: `https://example.com/test/${eventId}.jpg`,
+        mimeType: 'image/jpeg',
+        sizeBytes: 1024,
+      },
+    });
+  }
+
   async function setupPaidOrderCandidate() {
     const unique = randomUUID();
     const email = `organizer-${unique}@example.com`;
@@ -89,6 +104,7 @@ describe('PayDunya IPN webhook (e2e)', () => {
       startAt: '2027-01-01T18:00:00.000Z',
       endAt: '2027-01-01T23:00:00.000Z',
     });
+    await seedImage(event.id);
     await eventsService.update(organization.id, event.id, { status: EventStatus.PUBLISHED });
 
     const now = new Date();

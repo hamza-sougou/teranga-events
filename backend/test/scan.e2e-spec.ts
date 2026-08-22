@@ -80,12 +80,28 @@ describe('Scan — contrôle d\'accès (e2e)', () => {
       endAt: opts.endAt,
     });
     if (opts.status !== EventStatus.DRAFT) {
+      await seedImage(event.id);
       await eventsService.update(organizationId, event.id, { status: EventStatus.PUBLISHED });
     }
     if (opts.status === EventStatus.CANCELLED) {
       await eventsService.update(organizationId, event.id, { status: EventStatus.CANCELLED });
     }
     return prisma.event.findUniqueOrThrow({ where: { id: event.id } });
+  }
+
+  // Publishing now requires at least one image (events.e2e-spec.ts covers the
+  // rule itself) — seed one directly, this file isn't testing that rule.
+  function seedImage(eventId: string) {
+    return prisma.eventMedia.create({
+      data: {
+        eventId,
+        type: 'IMAGE',
+        storageKey: `test/${eventId}.jpg`,
+        url: `https://example.com/test/${eventId}.jpg`,
+        mimeType: 'image/jpeg',
+        sizeBytes: 1024,
+      },
+    });
   }
 
   async function createTicketType(organizationId: string, eventId: string) {

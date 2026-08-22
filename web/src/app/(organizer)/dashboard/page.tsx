@@ -6,6 +6,7 @@ import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { apiClient } from '@/lib/api-client';
 import { useCurrentUser } from '@/hooks/use-current-user';
+import { canManageEvents } from '@/lib/rbac';
 import { Kicker } from '@/components/ui/kicker';
 import { buttonClasses } from '@/components/ui/button';
 import { MetricCard } from '@/components/ui/metric-card';
@@ -74,6 +75,7 @@ function formatXof(amount: number) {
 export default function DashboardPage() {
   const { activeMembership } = useCurrentUser();
   const organizationId = activeMembership?.organizationId;
+  const canManage = canManageEvents(activeMembership?.role);
 
   const statsQuery = useQuery<OrgStats>({
     queryKey: ['org-stats', organizationId],
@@ -132,9 +134,11 @@ export default function DashboardPage() {
           <Link href="/dashboard/events" className={buttonClasses('ghost')}>
             Voir tout
           </Link>
-          <Link href="/dashboard/events/new" className={buttonClasses('primary')}>
-            Créer un évènement
-          </Link>
+          {canManage && (
+            <Link href="/dashboard/events/new" className={buttonClasses('primary')}>
+              Créer un évènement
+            </Link>
+          )}
         </div>
       </div>
 

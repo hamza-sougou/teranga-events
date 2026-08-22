@@ -45,7 +45,7 @@ Produits à construire : (1) back-office web (Super Admin/Comptable/Support), (2
 
 ## 3. Modules fonctionnels
 
-1. **Gestion des évènements** — création multi-types, page publique par évènement
+1. **Gestion des évènements** — création multi-types, médias (images/vidéos, stockage Cloudflare R2), page publique par évènement
 2. **Billetterie** — types de billets : standard, VIP, early bird, **prévente**, groupe. Génération unitaire ou par lot.
 3. **Vente & paiement** — panier, checkout via PayDunya (API PAR — Paiement Avec Redirection), commission plateforme calculée dynamiquement, codes promo
 4. **Reversement aux organisateurs** — déclenché après la fin de l'évènement, via l'API Déboursement PayDunya
@@ -75,6 +75,9 @@ Si 0 ligne retournée → ticket déjà utilisé/invalide → scan rejeté. Cett
 
 ### Préventes
 Un `TicketType` avec `category = 'presale'`, une fenêtre `sale_start`/`sale_end`, et un `access_mode` pouvant être `presale_whitelist` (liste d'invités via la table `ticket_type_whitelist`) ou `public`.
+
+### Médias requis à la publication
+Un évènement peut avoir plusieurs images et plusieurs vidéos (relation one-to-many, table `event_media`), stockées sur Cloudflare R2 via upload direct navigateur → R2 (URL présignée, jamais de transit par le backend — important pour les vidéos). **Au moins une image est requise pour publier** (transition de statut vers `published`), jamais bloquant pour un brouillon. Limites (contexte mobile/data limité au Sénégal) : images JPEG/PNG/WebP, 5 Mo max, 8 par évènement ; vidéos MP4/H.264 uniquement, 50 Mo max, 2 par évènement.
 
 ---
 

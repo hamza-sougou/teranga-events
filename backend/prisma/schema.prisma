@@ -179,6 +179,13 @@ enum PayoutStatus {
   @@map("payout_status")
 }
 
+enum EventMediaType {
+  IMAGE @map("image")
+  VIDEO @map("video")
+
+  @@map("event_media_type")
+}
+
 // ============================================================
 // 2. UTILISATEURS
 // ============================================================
@@ -261,6 +268,29 @@ model OrganizationMember {
 }
 
 // ============================================================
+// 3B. CATÉGORIES D'ÉVÈNEMENT (référence) — voir db/schema.sql section 3B
+// ============================================================
+// Table à plat (pas de sous-catégories), remplace l'ancien Event.category en
+// texte libre. is_active permet de retirer une catégorie du sélecteur sans
+// supprimer la ligne (les évènements existants continuent de la référencer).
+model EventCategory {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  slug       String   @unique @db.VarChar(50)
+  label      String   @db.VarChar(50)
+  icon       String   @db.VarChar(50)
+  colorToken String   @map("color_token") @db.VarChar(20)
+  sortOrder  Int      @map("sort_order")
+  isActive   Boolean  @default(true) @map("is_active")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  events Event[]
+
+  // CHECK (color_token IN ('indigo','amber','emerald','rose','orange','teal'))
+  // — chk_event_categories_color_token, see db/schema.sql, not enforced by Prisma.
+  @@map("event_categories")
+}
+
+// ============================================================
 // 4. ÉVÈNEMENTS
 // ============================================================
 
@@ -272,7 +302,7 @@ model Event {
   description    String?     @db.Text
   venueName      String?     @map("venue_name") @db.VarChar(200)
   address        String?     @db.Text
-  category       String?     @db.VarChar(50)
+  categoryId     String?     @map("category_id") @db.Uuid
   status         EventStatus @default(DRAFT)
   startAt        DateTime    @map("start_at") @db.Timestamptz(6)
   endAt          DateTime    @map("end_at") @db.Timestamptz(6)
@@ -280,16 +310,39 @@ model Event {
   createdAt      DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt      DateTime    @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  organization  Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  createdByUser User         @relation("EventCreator", fields: [createdBy], references: [id], onDelete: NoAction)
+  organization  Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdByUser User           @relation("EventCreator", fields: [createdBy], references: [id], onDelete: NoAction)
+  category      EventCategory? @relation(fields: [categoryId], references: [id], onDelete: Restrict)
   ticketTypes   TicketType[]
   promoCodes    PromoCode[]
   orders        Order[]
   payout        Payout?
+  media         EventMedia[]
 
   // CHECK (end_at > start_at) — see db/schema.sql, not enforced by Prisma
   @@index([organizationId, status], map: "idx_events_org_status")
   @@map("events")
+}
+
+// ============================================================
+// 4B. MÉDIAS DES ÉVÈNEMENTS (images, vidéos) — voir db/schema.sql section 4B
+// ============================================================
+model EventMedia {
+  id               String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  eventId          String         @map("event_id") @db.Uuid
+  type             EventMediaType
+  storageKey       String         @map("storage_key") @db.Text
+  url              String         @db.Text
+  mimeType         String         @map("mime_type") @db.VarChar(100)
+  sizeBytes        Int            @map("size_bytes")
+  originalFilename String?        @map("original_filename") @db.Text
+  createdAt        DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  // CHECK (size_bytes > 0) — see db/schema.sql, not enforced by Prisma.
+  @@index([eventId], map: "idx_event_media_event")
+  @@map("event_media")
 }
 
 // ============================================================

@@ -1,4 +1,5 @@
 import { cn } from '@/lib/utils';
+import { LoaderIcon } from '@/components/ui/icons';
 
 export type ButtonVariant = 'primary' | 'ghost';
 
@@ -18,7 +19,15 @@ export function buttonClasses(variant: ButtonVariant = 'primary', className?: st
 export function Button({
   variant = 'primary',
   className,
+  loading,
+  disabled,
+  children,
   ...props
-}: React.ComponentPropsWithoutRef<'button'> & { variant?: ButtonVariant }) {
-  return <button className={buttonClasses(variant, className)} {...props} />;
+}: React.ComponentPropsWithoutRef<'button'> & { variant?: ButtonVariant; loading?: boolean }) {
+  return (
+    <button className={buttonClasses(variant, className)} disabled={disabled || loading} {...props}>
+      {loading && <LoaderIcon className="h-[13px] w-[13px] animate-spin" />}
+      {children}
+    </button>
+  );
 }

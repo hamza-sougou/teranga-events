@@ -13,6 +13,7 @@ import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
 import { TeamsModule } from './teams/teams.module';
 import { EventsModule } from './events/events.module';
+import { EventCategoriesModule } from './event-categories/event-categories.module';
 import { TicketTypesModule } from './ticket-types/ticket-types.module';
 import { OrdersModule } from './orders/orders.module';
 import { PaymentsModule } from './payments/payments.module';
@@ -21,6 +22,8 @@ import { TicketsModule } from './tickets/tickets.module';
 import { ScanModule } from './scan/scan.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { StatsModule } from './stats/stats.module';
+import { StorageModule } from './storage/storage.module';
+import { EventMediaModule } from './event-media/event-media.module';
 
 const isTestEnv = process.env.NODE_ENV === 'test';
 
@@ -42,6 +45,7 @@ const isTestEnv = process.env.NODE_ENV === 'test';
     UsersModule,
     TeamsModule,
     EventsModule,
+    EventCategoriesModule,
     TicketTypesModule,
     OrdersModule,
     PaymentsModule,
@@ -50,6 +54,8 @@ const isTestEnv = process.env.NODE_ENV === 'test';
     ScanModule,
     NotificationsModule,
     StatsModule,
+    StorageModule,
+    EventMediaModule,
   ],
   providers: isTestEnv ? [] : [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })

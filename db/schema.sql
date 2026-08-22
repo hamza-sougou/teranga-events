@@ -112,6 +112,41 @@ CREATE INDEX idx_org_members_org ON organization_members (organization_id);
 
 
 -- ============================================================
+-- 3B. CATÉGORIES D'ÉVÈNEMENT (référence)
+-- ============================================================
+-- Table à plat (pas de sous-catégories) remplaçant l'ancien events.category en
+-- texte libre — deux organisateurs créant un évènement de même nature
+-- écrivaient des valeurs différentes ("concert de jazz" vs "concert de rap"),
+-- ce qui cassait tout filtre/tri par catégorie. is_active permet de retirer
+-- une catégorie du sélecteur sans supprimer la ligne (et donc sans casser les
+-- évènements existants qui la référencent).
+
+CREATE TABLE event_categories (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  slug        VARCHAR(50) UNIQUE NOT NULL,
+  label       VARCHAR(50) NOT NULL,
+  icon        VARCHAR(50) NOT NULL,   -- nom d'icône Iconify/Lucide, ex: 'music'
+  color_token VARCHAR(20) NOT NULL,   -- un des tokens --cat-* de docs/DESIGN_SYSTEM.md
+  sort_order  INTEGER NOT NULL,
+  is_active   BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+
+  CONSTRAINT chk_event_categories_color_token
+    CHECK (color_token IN ('indigo', 'amber', 'emerald', 'rose', 'orange', 'teal'))
+);
+
+INSERT INTO event_categories (slug, label, icon, color_token, sort_order) VALUES
+  ('concert',    'Concert',    'music',        'indigo',  1),
+  ('festival',   'Festival',   'sparkles',     'amber',   2),
+  ('soiree',     'Soirée',     'moon',         'rose',    3),
+  ('ceremonie',  'Cérémonie',  'award',        'emerald', 4),
+  ('theatre',    'Théâtre',    'drama',        'teal',    5),
+  ('conference', 'Conférence', 'presentation', 'orange',  6),
+  ('sport',      'Sport',      'trophy',       'indigo',  7),
+  ('autre',      'Autre',      'shapes',       'amber',   8);
+
+
+-- ============================================================
 -- 4. ÉVÈNEMENTS
 -- ============================================================
 
@@ -123,7 +158,7 @@ CREATE TABLE events (
   description       TEXT,
   venue_name        VARCHAR(200),
   address           TEXT,
-  category          VARCHAR(50), -- festival, concert, ceremonie, soiree...
+  category_id       UUID REFERENCES event_categories(id),
   status            event_status NOT NULL DEFAULT 'draft',
   start_at          TIMESTAMPTZ NOT NULL,
   end_at            TIMESTAMPTZ NOT NULL,
@@ -135,6 +170,40 @@ CREATE TABLE events (
 );
 
 CREATE INDEX idx_events_org_status ON events (organization_id, status);
+
+
+-- ============================================================
+-- 4B. MÉDIAS DES ÉVÈNEMENTS (images, vidéos)
+-- ============================================================
+-- Relation one-to-many : un évènement peut avoir plusieurs images et
+-- plusieurs vidéos. Stockage sur Cloudflare R2 (compatible S3), upload direct
+-- client → R2 via URL présignée (jamais de transit par le backend, surtout
+-- pour les vidéos) — voir docs/INFRASTRUCTURE.md section 7. `size_bytes` et
+-- `mime_type` sont redéclarés par le client au moment de la confirmation
+-- d'upload, puis revérifiés côté serveur via une requête HEAD sur l'objet R2
+-- avant d'insérer la ligne ici — jamais seulement déclarés.
+--
+-- Au moins une image est requise, mais seulement pour passer un évènement en
+-- statut 'published' (jamais bloquant pour un brouillon) — voir la logique de
+-- transition de statut dans backend/src/events/events.service.ts.
+
+CREATE TYPE event_media_type AS ENUM ('image', 'video');
+
+CREATE TABLE event_media (
+  id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  event_id           UUID NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+  type               event_media_type NOT NULL,
+  storage_key        TEXT NOT NULL,          -- clé objet R2, ex: events/{eventId}/{uuid}.jpg
+  url                TEXT NOT NULL,          -- URL publique (R2_PUBLIC_URL + storage_key)
+  mime_type          VARCHAR(100) NOT NULL,
+  size_bytes         INTEGER NOT NULL,
+  original_filename  TEXT,
+  created_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
+
+  CHECK (size_bytes > 0)
+);
+
+CREATE INDEX idx_event_media_event ON event_media (event_id);
 
 
 -- ============================================================

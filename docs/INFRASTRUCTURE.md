@@ -20,7 +20,7 @@ Si Claude Code rencontre une tâche **[Vous]** non encore fournie, il doit s'arr
 | Redis                | Jobs BullMQ, rate limiting, cache                                               | Provisionner Redis managé pour la prod, fournir le `REDIS_URL`          |
 | Sécurité applicative | Throttler, Helmet.js, CORS, validation des env vars                             | Activer Cloudflare sur le domaine (dépend de la section Domaine)        |
 | Observabilité        | Intégration SDK Sentry, endpoint `/health`, logs structurés                     | Créer le compte Sentry (DSN), configurer UptimeRobot sur `/health`      |
-| Stockage fichiers    | Logique d'upload, URLs signées                                                  | Créer le bucket S3/R2, fournir les clés d'accès                         |
+| Stockage fichiers    | ✅ Logique d'upload médias évènements, URLs présignées                          | ✅ Bucket créé, clés fournies — reste CORS + accès public en lecture     |
 | CI/CD                | `ci.yml` complet, étapes de déploiement                                         | Ajouter les secrets de déploiement dans GitHub (token hébergeur)        |
 | Domaine & email      | —                                                                               | DNS, SPF/DKIM/DMARC (panneau du registrar)                              |
 | PayDunya live        | Lire les nouvelles variables d'environnement, vérifier le switch mode test/live | Récupérer les clés `live`, mettre à jour l'URL IPN dans leur dashboard  |
@@ -34,7 +34,7 @@ Si Claude Code rencontre une tâche **[Vous]** non encore fournie, il doit s'arr
 - **Observabilité** — fait côté code : `GET /health`, logs structurés (`nestjs-pino`, JSON en prod, silencieux en test), intégration `@sentry/node` (inactive tant que `SENTRY_DSN` n'est pas fourni — voir section "Ce qu'il me faut" plus bas). Audit des logs existants effectué : aucun secret/clé API/mot de passe n'est jamais loggé (uniquement IDs, montants, messages d'erreur).
 - **CI** — fait : `.github/workflows/ci.yml` (lint, type-check, migrations, tests unitaires + e2e, build de l'image Docker). Étapes de déploiement volontairement absentes (aucun hébergeur choisi — voir section 3). `backend/.eslintrc.js` créé au passage (les dépendances ESLint existaient dans le scaffold initial mais n'avaient jamais été câblées — aucune config ne fonctionnait avant cette passe).
 - **Redis** — dépendance `ioredis` présente, provisionné via Docker, mais toujours pas branché à l'application (jobs, rate-limiting, cache) — décision explicite : `@Cron` reste en place tant qu'une seule instance backend tourne.
-- **Stockage fichiers (S3 / Cloudflare R2)** — pas configuré. Pas de champ image sur `events` dans le schéma actuel ni d'endpoint d'upload nulle part — reporté à quand une fonctionnalité concrète en aura besoin, plutôt que d'écrire une logique sans appelant réel.
+- **Stockage fichiers (S3 / Cloudflare R2)** — fait côté code : table `event_media` (one-to-many images/vidéos par évènement), upload direct navigateur → R2 via URL présignée (`backend/src/storage/`, `backend/src/event-media/`), règle "minimum une image à la publication" (voir `docs/SPEC.md` §4). Bucket créé et clés réelles fournies dans `backend/.env`. **Reste à faire côté Cloudflare** (tâches [Vous], non vérifiées à ce jour) : CORS du bucket (autoriser `PUT` + en-tête `Content-Type` depuis l'origine frontend, sans quoi le navigateur bloque l'upload direct) et accès public en lecture (URL `r2.dev` ou domaine personnalisé) pour que `R2_PUBLIC_URL` serve réellement les fichiers. Exports comptables/reçus derrière URL signée à expiration courte — toujours non commencés, aucun appelant réel pour l'instant.
 - **Hébergement** — aucun déploiement, ni staging ni production.
 - **PayDunya** — mode `test` uniquement (clés sandbox). Le switch `test`/`live` est déjà entièrement piloté par `PAYDUNYA_MODE` (`PaydunyaProvider.buildSetup()`, module paiement) — la tâche [Claude Code] de la section 10 est donc déjà satisfaite, aucun nouveau code nécessaire au moment du passage en `live`.
 
@@ -110,8 +110,10 @@ Les apps Flutter (Organisateur, Scan) ne se dockerisent pas — ce sont des apps
 
 ### Tâches
 
-- **[Vous]** Créer le bucket, récupérer les clés d'accès.
-- **[Claude Code]** Logique d'upload une fois les clés fournies : images d'évènements en accès public, exports comptables et reçus derrière des URLs signées à expiration courte (jamais un bucket public par défaut pour ces derniers).
+- **[Vous]** ✅ Créer le bucket, récupérer les clés d'accès — fait, clés dans `backend/.env`.
+- **[Claude Code]** ✅ Logique d'upload médias évènements (images en accès public, one-to-many, upload direct navigateur → R2 via URL présignée) — fait, voir `docs/SPEC.md` §4 et `PROGRESS.md` §3B. Exports comptables/reçus derrière des URLs signées à expiration courte (jamais un bucket public par défaut pour ces derniers) — pas encore commencé, aucun endpoint d'export ne les produit encore.
+- **[Vous]** Configurer le CORS du bucket (autoriser `PUT` + en-tête `Content-Type` depuis l'origine frontend — `http://localhost:3001` en dev) sur le dashboard Cloudflare, sans quoi le navigateur bloque l'upload direct.
+- **[Vous]** Activer un accès public en lecture sur le bucket (URL de développement `r2.dev` ou domaine personnalisé) pour que `R2_PUBLIC_URL` serve réellement les images/vidéos.
 
 ---
 
