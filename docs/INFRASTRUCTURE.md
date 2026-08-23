@@ -24,6 +24,7 @@ Si Claude Code rencontre une tâche **[Vous]** non encore fournie, il doit s'arr
 | CI/CD                | `ci.yml` complet, étapes de déploiement                                         | Ajouter les secrets de déploiement dans GitHub (token hébergeur)        |
 | Domaine & email      | —                                                                               | DNS, SPF/DKIM/DMARC (panneau du registrar)                              |
 | PayDunya live        | Lire les nouvelles variables d'environnement, vérifier le switch mode test/live | Récupérer les clés `live`, mettre à jour l'URL IPN dans leur dashboard  |
+| Géocodage            | ✅ Module `geocoding/`, adaptateur Nominatim isolé derrière une interface       | Rien pour l'instant (Nominatim ne nécessite aucune clé) — un compte Google Cloud + clé API ne seront nécessaires qu'au passage à Google Maps en prod |
 
 ---
 
@@ -37,6 +38,7 @@ Si Claude Code rencontre une tâche **[Vous]** non encore fournie, il doit s'arr
 - **Stockage fichiers (S3 / Cloudflare R2)** — fait côté code : table `event_media` (one-to-many images/vidéos par évènement), upload direct navigateur → R2 via URL présignée (`backend/src/storage/`, `backend/src/event-media/`), règle "minimum une image à la publication" (voir `docs/SPEC.md` §4). Bucket créé et clés réelles fournies dans `backend/.env`. **Reste à faire côté Cloudflare** (tâches [Vous], non vérifiées à ce jour) : CORS du bucket (autoriser `PUT` + en-tête `Content-Type` depuis l'origine frontend, sans quoi le navigateur bloque l'upload direct) et accès public en lecture (URL `r2.dev` ou domaine personnalisé) pour que `R2_PUBLIC_URL` serve réellement les fichiers. Exports comptables/reçus derrière URL signée à expiration courte — toujours non commencés, aucun appelant réel pour l'instant.
 - **Hébergement** — aucun déploiement, ni staging ni production.
 - **PayDunya** — mode `test` uniquement (clés sandbox). Le switch `test`/`live` est déjà entièrement piloté par `PAYDUNYA_MODE` (`PaydunyaProvider.buildSetup()`, module paiement) — la tâche [Claude Code] de la section 10 est donc déjà satisfaite, aucun nouveau code nécessaire au moment du passage en `live`.
+- **Géocodage** — fait côté code : module `geocoding/` (`GET /geocode/search`, JWT requis), adaptateur `NominatimGeocodingProvider` derrière une interface `GeocodingProvider` (voir section 12). Nominatim ne nécessite aucune clé ni compte — fonctionne dès aujourd'hui sans tâche [Vous] en attente. Le seul [Vous] à venir sera la création d'un compte Google Cloud (facturation + clé API Geocoding) au moment du passage à Google Maps en production.
 
 ---
 
@@ -153,3 +155,21 @@ Ce qui coûte le plus cher à corriger une fois qu'il y a de vrais utilisateurs 
 3. Pipeline de **déploiement** (section 8), pas seulement de validation
 
 Le reste (monitoring avancé, cache Redis pour les pages publiques) peut arriver progressivement une fois le trafic réel observé.
+
+---
+
+## 12. Géocodage (Nominatim → Google Maps)
+
+### État actuel
+
+Recherche de lieu (page création/édition d'évènement) via l'API publique **Nominatim/OpenStreetMap**, appelée uniquement depuis le backend (jamais depuis le navigateur — Nominatim l'exige) avec un `User-Agent` identifiant l'app (`NOMINATIM_USER_AGENT`, dégrade vers une valeur par défaut codée en dur si absente — même politique que les autres intégrations tierces, voir `env.validation.ts`). Aucune clé ni compte requis. Requêtes sortantes réelles sérialisées en interne (~1,1s d'écart minimum) pour respecter la limite d'usage ~1 req/s de Nominatim même sous plusieurs recherches organisateur concurrentes.
+
+### Pourquoi une interface
+
+`GeocodingProvider` (`backend/src/geocoding/providers/nominatim-geocoding.provider.ts`) isole tout appel Nominatim derrière une interface à une seule méthode (`searchPlaces(query)`) précisément pour que le passage à **Google Maps en production** (meilleure couverture d'adresses hors grandes villes, cohérence avec un futur affichage carte participant) ne touche qu'un fichier — un nouveau `GoogleGeocodingProvider implements GeocodingProvider` branché dans `geocoding.module.ts`, sans changement d'endpoint, de DTO, ni de frontend.
+
+### Tâches
+
+- **[Claude Code]** ✅ Adaptateur Nominatim, endpoint `GET /geocode/search`, limitation de débit interne — fait, voir `PROGRESS.md` §3.
+- **[Vous]** Au moment de basculer vers Google Maps en production : créer un compte Google Cloud, activer l'API Geocoding, configurer la facturation (payante au-delà d'un quota gratuit), fournir la clé API.
+- **[Claude Code]** Écrire `GoogleGeocodingProvider` une fois la clé fournie, brancher dans `geocoding.module.ts`.

@@ -45,7 +45,7 @@ Produits à construire : (1) back-office web (Super Admin/Comptable/Support), (2
 
 ## 3. Modules fonctionnels
 
-1. **Gestion des évènements** — création multi-types, médias (images/vidéos, stockage Cloudflare R2), page publique par évènement
+1. **Gestion des évènements** — création multi-types, médias (images/vidéos, stockage Cloudflare R2), géolocalisation (recherche OpenStreetMap/Nominatim en développement, Google Maps prévu en production — voir section 8), page publique par évènement
 2. **Billetterie** — types de billets : standard, VIP, early bird, **prévente**, groupe. Génération unitaire ou par lot.
 3. **Vente & paiement** — panier, checkout via PayDunya (API PAR — Paiement Avec Redirection), commission plateforme calculée dynamiquement, codes promo
 4. **Reversement aux organisateurs** — déclenché après la fin de l'évènement, via l'API Déboursement PayDunya
@@ -185,3 +185,9 @@ Corrections à apporter suite à la section 5 :
 > **✅ Ces quatre corrections sont appliquées** dans `db/schema.sql` et `backend/prisma/schema.prisma` (voir `PROGRESS.md` §1 pour le détail des migrations). Cette section reste la trace de la décision d'origine, pas une tâche en attente.
 
 Rappel technique (section 5.4) : toute vérification d'IPN PayDunya doit comparer le hash reçu au SHA-512 de la clé principale avant tout traitement — ne jamais faire confiance à une requête entrante sans cette vérification.
+
+### Géolocalisation des évènements
+
+`events` gagne `country` (`VARCHAR(100)`, défaut `'Sénégal'`), `city` (`VARCHAR(100)`, nullable), `latitude`/`longitude` (`DECIMAL(9,6)`, nullables, toujours pairées — `CHECK (latitude IS NULL) = (longitude IS NULL)`), en complément de `venue_name`/`address` qui restent du texte libre. Ces quatre champs remplacent le couple texte libre par un vrai point géographique, sans supprimer la saisie manuelle : l'organisateur recherche un lieu (Nominatim/OpenStreetMap en développement), sélectionne un résultat qui préremplit Pays/Ville/Adresse, ou place le point manuellement sur la carte — les quatre champs restent modifiables à la main dans tous les cas.
+
+Le fournisseur de géocodage est isolé derrière une interface (`GeocodingProvider`, `backend/src/geocoding/`) précisément pour permettre un remplacement par Google Maps en production sans changement de schéma, d'endpoint (`GET /geocode/search`) ni de frontend — seul le fournisseur derrière l'interface change. Voir `docs/INFRASTRUCTURE.md` §12 pour l'état de cette bascule et `PROGRESS.md` §3 pour le détail d'implémentation.

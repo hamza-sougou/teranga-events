@@ -94,7 +94,7 @@ Chaque page = une session Claude Code dédiée, en plan mode, validée avant de 
 
 ### Organisateur (tableau de bord web) — en premier
 1. ✅ **Tableau de bord** *(construit et vérifié visuellement — Playwright à 375/768/1280px, voir `PROGRESS.md` §12)* — backend prêt (`GET /organizations/:id/stats`, `/events`, `/payouts`, `/members`)
-2. Création / édition d'évènement (types de billets, prévente incluse, upload médias images/vidéos via Cloudflare R2) — backend prêt (`events`, `ticket-types`, `event-media`)
+2. ✅ **Création / édition d'évènement** *(construite et vérifiée visuellement)* (types de billets, prévente incluse, upload médias images/vidéos via Cloudflare R2, géolocalisation Pays/Ville/Adresse/Lieu via recherche OpenStreetMap/Nominatim + carte Leaflet — **première intégration Leaflet du projet**, ajoutée après coup à cette page, voir `PROGRESS.md` §12bis) — backend prêt (`events`, `ticket-types`, `event-media`, `geocoding`)
 3. Détail des ventes / historique de scan (lecture seule côté web) — backend prêt (`orders`, `scans`)
 4. Gestion de l'équipe (CRUD employés + rôles) — backend prêt (`teams`)
 5. Reversements (détail, historique) — backend prêt (`payouts`)
