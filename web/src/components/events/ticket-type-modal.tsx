@@ -156,7 +156,7 @@ export function TicketTypeModal({ open, onClose, organizationId, eventId, ticket
             <Input id="tt-price" type="number" min={0} step="0.01" invalid={!!errors.price} {...register('price')} />
           </FormField>
           <FormField label="Devise" htmlFor="tt-currency" required error={errors.currency?.message}>
-            <Input id="tt-currency" invalid={!!errors.currency} {...register('currency')} />
+            <Input id="tt-currency" disabled invalid={!!errors.currency} {...register('currency')} />
           </FormField>
         </div>
 

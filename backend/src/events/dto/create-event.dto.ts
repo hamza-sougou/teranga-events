@@ -1,4 +1,20 @@
-import { IsDateString, IsLatitude, IsLongitude, IsOptional, IsString, IsUUID, Matches, MinLength } from 'class-validator';
+import { Type } from 'class-transformer';
+import {
+  IsArray,
+  IsDateString,
+  IsInt,
+  IsLatitude,
+  IsLongitude,
+  IsOptional,
+  IsString,
+  IsUUID,
+  Matches,
+  Max,
+  Min,
+  MinLength,
+  ValidateNested,
+} from 'class-validator';
+import { DressCodeEntryDto } from './dress-code-entry.dto';
 
 export class CreateEventDto {
   @MinLength(2)
@@ -46,4 +62,18 @@ export class CreateEventDto {
 
   @IsDateString()
   endAt!: string;
+
+  // Minimum age required, null = everyone. No separate "18+" field — that's
+  // just minAge = 18, a frontend shortcut, not a distinct data structure.
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(99)
+  minAge?: number | null;
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => DressCodeEntryDto)
+  dressCodes?: DressCodeEntryDto[];
 }

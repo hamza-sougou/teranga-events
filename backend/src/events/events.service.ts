@@ -1,9 +1,15 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import { EventStatus, Prisma } from '@prisma/client';
+import { DressCodeAudience, EventStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateEventDto } from './dto/create-event.dto';
 import { UpdateEventDto } from './dto/update-event.dto';
+import { DressCodeEntryDto } from './dto/dress-code-entry.dto';
 import { NotificationsService } from '../notifications/notifications.service';
+
+// Maximum dress code entries per applies_to value — the three buckets
+// (everyone/men/women) are independent, no cross-counting. Enforced here,
+// deliberately not a SQL CHECK/trigger — see db/schema.sql section 4C.
+const MAX_DRESS_CODE_ENTRIES_PER_AUDIENCE = 3;
 
 const ALLOWED_TRANSITIONS: Record<EventStatus, EventStatus[]> = {
   [EventStatus.DRAFT]: [EventStatus.PUBLISHED, EventStatus.CANCELLED],
@@ -26,6 +32,11 @@ const PUBLIC_EVENT_SELECT = {
   category: {
     select: { id: true, slug: true, label: true, icon: true, colorToken: true },
   },
+  minAge: true,
+  dressCodes: {
+    select: { id: true, label: true, appliesTo: true, sortOrder: true },
+    orderBy: { sortOrder: 'asc' },
+  },
   startAt: true,
   endAt: true,
   media: {
@@ -44,6 +55,7 @@ export class EventsService {
   async create(organizationId: string, userId: string, dto: CreateEventDto) {
     this.assertDateOrder(dto.startAt, dto.endAt);
     this.assertCoordinatesPaired(dto.latitude, dto.longitude);
+    this.assertDressCodeLimits(dto.dressCodes);
     if (dto.categoryId) {
       await this.assertCategoryExists(dto.categoryId);
     }
@@ -63,10 +75,12 @@ export class EventsService {
           latitude: dto.latitude,
           longitude: dto.longitude,
           categoryId: dto.categoryId,
+          minAge: dto.minAge,
           startAt: new Date(dto.startAt),
           endAt: new Date(dto.endAt),
+          dressCodes: dto.dressCodes ? { create: this.buildDressCodeRows(dto.dressCodes) } : undefined,
         },
-        include: { category: true },
+        include: { category: true, dressCodes: { orderBy: { sortOrder: 'asc' } } },
       });
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
@@ -97,7 +111,11 @@ export class EventsService {
     await this.findOneForOrganization(organizationId, eventId);
     return this.prisma.event.findFirst({
       where: { id: eventId, organizationId },
-      include: { category: true, media: { orderBy: { createdAt: 'asc' } } },
+      include: {
+        category: true,
+        media: { orderBy: { createdAt: 'asc' } },
+        dressCodes: { orderBy: { sortOrder: 'asc' } },
+      },
     });
   }
 
@@ -108,6 +126,7 @@ export class EventsService {
     const endAt = dto.endAt ?? event.endAt.toISOString();
     this.assertDateOrder(startAt, endAt);
     this.assertCoordinatesPaired(dto.latitude, dto.longitude);
+    this.assertDressCodeLimits(dto.dressCodes);
     if (dto.categoryId) {
       await this.assertCategoryExists(dto.categoryId);
     }
@@ -132,24 +151,44 @@ export class EventsService {
 
     let updated;
     try {
-      updated = await this.prisma.event.update({
-        where: { id: eventId },
-        data: {
-          name: dto.name,
-          slug: dto.slug,
-          description: dto.description,
-          venueName: dto.venueName,
-          address: dto.address,
-          country: dto.country,
-          city: dto.city,
-          latitude: dto.latitude,
-          longitude: dto.longitude,
-          categoryId: dto.categoryId,
-          startAt: dto.startAt ? new Date(dto.startAt) : undefined,
-          endAt: dto.endAt ? new Date(dto.endAt) : undefined,
-          status: dto.status,
-        },
-        include: { category: true },
+      updated = await this.prisma.$transaction(async (tx) => {
+        await tx.event.update({
+          where: { id: eventId },
+          data: {
+            name: dto.name,
+            slug: dto.slug,
+            description: dto.description,
+            venueName: dto.venueName,
+            address: dto.address,
+            country: dto.country,
+            city: dto.city,
+            latitude: dto.latitude,
+            longitude: dto.longitude,
+            categoryId: dto.categoryId,
+            minAge: dto.minAge,
+            startAt: dto.startAt ? new Date(dto.startAt) : undefined,
+            endAt: dto.endAt ? new Date(dto.endAt) : undefined,
+            status: dto.status,
+          },
+        });
+
+        // Whole-list replace, not a diff — the frontend always submits the
+        // section's full current state in one go. Only touched when the
+        // field is present at all (even empty), so callers that omit it
+        // entirely leave the existing list untouched.
+        if (dto.dressCodes !== undefined) {
+          await tx.eventDressCode.deleteMany({ where: { eventId } });
+          if (dto.dressCodes.length > 0) {
+            await tx.eventDressCode.createMany({
+              data: this.buildDressCodeRows(dto.dressCodes).map((row) => ({ ...row, eventId })),
+            });
+          }
+        }
+
+        return tx.event.findUniqueOrThrow({
+          where: { id: eventId },
+          include: { category: true, dressCodes: { orderBy: { sortOrder: 'asc' } } },
+        });
       });
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
@@ -198,5 +237,35 @@ export class EventsService {
     if (!category) {
       throw new BadRequestException('Unknown categoryId');
     }
+  }
+
+  // Max 3 entries per applies_to value — everyone/men/women are independent
+  // buckets, never counted against each other. Cosmetic constraint, not a
+  // SQL CHECK/trigger — see db/schema.sql section 4C.
+  private assertDressCodeLimits(entries?: DressCodeEntryDto[]) {
+    if (!entries) return;
+    const counts = new Map<DressCodeAudience, number>();
+    for (const entry of entries) {
+      const appliesTo = entry.appliesTo ?? DressCodeAudience.EVERYONE;
+      const count = (counts.get(appliesTo) ?? 0) + 1;
+      if (count > MAX_DRESS_CODE_ENTRIES_PER_AUDIENCE) {
+        throw new BadRequestException(
+          `Maximum ${MAX_DRESS_CODE_ENTRIES_PER_AUDIENCE} dress code entries for "${appliesTo}"`,
+        );
+      }
+      counts.set(appliesTo, count);
+    }
+  }
+
+  // Assigns sortOrder = position within its own applies_to group, in the
+  // order the client sent them — the client never needs to compute it.
+  private buildDressCodeRows(entries: DressCodeEntryDto[]) {
+    const counters = new Map<DressCodeAudience, number>();
+    return entries.map((entry) => {
+      const appliesTo = entry.appliesTo ?? DressCodeAudience.EVERYONE;
+      const sortOrder = counters.get(appliesTo) ?? 0;
+      counters.set(appliesTo, sortOrder + 1);
+      return { label: entry.label, appliesTo, sortOrder };
+    });
   }
 }

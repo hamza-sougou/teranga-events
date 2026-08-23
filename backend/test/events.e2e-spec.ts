@@ -416,4 +416,125 @@ describe('Events (e2e)', () => {
       expect(res.body.createdBy).toBeUndefined();
     });
   });
+
+  describe('optional settings (min age & dress code)', () => {
+    it('treats an absent minAge as "everyone" (null)', async () => {
+      const { accessToken, organizationId } = await registerOrganizer();
+
+      const res = await request(app.getHttpServer())
+        .post(`/organizations/${organizationId}/events`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send(eventPayload())
+        .expect(201);
+
+      expect(res.body.minAge).toBeNull();
+      expect(res.body.dressCodes).toEqual([]);
+    });
+
+    it('rejects a 4th dress code entry for the same applies_to with 400', async () => {
+      const { accessToken, organizationId } = await registerOrganizer();
+      const payload = {
+        ...eventPayload(),
+        dressCodes: [
+          { label: 'Costume', appliesTo: 'MEN' },
+          { label: 'Chemise', appliesTo: 'MEN' },
+          { label: 'Blazer', appliesTo: 'MEN' },
+          { label: 'Veston', appliesTo: 'MEN' },
+        ],
+      };
+
+      await request(app.getHttpServer())
+        .post(`/organizations/${organizationId}/events`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send(payload)
+        .expect(400);
+    });
+
+    it('accepts up to 3 entries per bucket independently (9 total)', async () => {
+      const { accessToken, organizationId } = await registerOrganizer();
+      const payload = {
+        ...eventPayload(),
+        minAge: 18,
+        dressCodes: [
+          { label: 'Tenue chic', appliesTo: 'EVERYONE' },
+          { label: 'Pas de tongs', appliesTo: 'EVERYONE' },
+          { label: 'Pas de shorts', appliesTo: 'EVERYONE' },
+          { label: 'Costume', appliesTo: 'MEN' },
+          { label: 'Chemise', appliesTo: 'MEN' },
+          { label: 'Blazer', appliesTo: 'MEN' },
+          { label: 'Robe', appliesTo: 'WOMEN' },
+          { label: 'Talons', appliesTo: 'WOMEN' },
+          { label: 'Tailleur', appliesTo: 'WOMEN' },
+        ],
+      };
+
+      const res = await request(app.getHttpServer())
+        .post(`/organizations/${organizationId}/events`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send(payload)
+        .expect(201);
+
+      expect(res.body.minAge).toBe(18);
+      expect(res.body.dressCodes).toHaveLength(9);
+      expect(res.body.dressCodes.filter((d: { appliesTo: string }) => d.appliesTo === 'MEN')).toHaveLength(3);
+      expect(res.body.dressCodes.filter((d: { appliesTo: string }) => d.appliesTo === 'WOMEN')).toHaveLength(3);
+      expect(res.body.dressCodes.filter((d: { appliesTo: string }) => d.appliesTo === 'EVERYONE')).toHaveLength(3);
+    });
+
+    it('rejects a dress code label over 25 characters with 400', async () => {
+      const { accessToken, organizationId } = await registerOrganizer();
+      const payload = {
+        ...eventPayload(),
+        dressCodes: [{ label: 'Un libellé bien trop long pour tenir', appliesTo: 'EVERYONE' }],
+      };
+
+      await request(app.getHttpServer())
+        .post(`/organizations/${organizationId}/events`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send(payload)
+        .expect(400);
+    });
+
+    it('fully replaces the dress code list on update, never merges', async () => {
+      const { accessToken, organizationId } = await registerOrganizer();
+      const created = await request(app.getHttpServer())
+        .post(`/organizations/${organizationId}/events`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({
+          ...eventPayload(),
+          dressCodes: [
+            { label: 'Ancien 1', appliesTo: 'EVERYONE' },
+            { label: 'Ancien 2', appliesTo: 'EVERYONE' },
+          ],
+        })
+        .expect(201);
+
+      const updated = await request(app.getHttpServer())
+        .patch(`/organizations/${organizationId}/events/${created.body.id}`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ dressCodes: [{ label: 'Nouveau', appliesTo: 'WOMEN' }] })
+        .expect(200);
+
+      expect(updated.body.dressCodes).toHaveLength(1);
+      expect(updated.body.dressCodes[0]).toMatchObject({ label: 'Nouveau', appliesTo: 'WOMEN' });
+    });
+
+    it('clears minAge when the update explicitly sends null', async () => {
+      const { accessToken, organizationId } = await registerOrganizer();
+      const created = await request(app.getHttpServer())
+        .post(`/organizations/${organizationId}/events`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ ...eventPayload(), minAge: 21 })
+        .expect(201);
+      expect(created.body.minAge).toBe(21);
+
+      const updated = await request(app.getHttpServer())
+        .patch(`/organizations/${organizationId}/events/${created.body.id}`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ minAge: null })
+        .expect(200);
+
+      expect(updated.body.minAge).toBeNull();
+    });
+  });
 });

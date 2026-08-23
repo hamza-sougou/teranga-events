@@ -10,6 +10,7 @@ export type PayoutStatus = 'PENDING' | 'PROCESSING' | 'PAID' | 'FAILED';
 export type TicketCategory = 'STANDARD' | 'VIP' | 'EARLY_BIRD' | 'PRESALE' | 'GROUP';
 export type TicketAccessMode = 'PUBLIC' | 'PRESALE_WHITELIST' | 'PRIVATE_LINK';
 export type EventMediaType = 'IMAGE' | 'VIDEO';
+export type DressCodeAudience = 'EVERYONE' | 'MEN' | 'WOMEN';
 
 export interface Organization {
   id: string;
@@ -63,6 +64,9 @@ export interface Event {
   categoryId: string | null;
   category: EventCategory | null;
   status: EventStatus;
+  // Paramètres optionnels : null = tout le monde. No separate "18+" field —
+  // that's just minAge = 18, a frontend shortcut only.
+  minAge: number | null;
   startAt: string;
   endAt: string;
   createdBy: string;
@@ -71,6 +75,16 @@ export interface Event {
   // Only present on the detail endpoint (GET .../events/:eventId) — the
   // list endpoint deliberately omits it, nothing there renders a gallery.
   media?: EventMedia[];
+  dressCodes?: EventDressCode[];
+}
+
+export interface EventDressCode {
+  id: string;
+  eventId: string;
+  label: string;
+  appliesTo: DressCodeAudience;
+  sortOrder: number;
+  createdAt: string;
 }
 
 // Mirrors backend/src/geocoding/providers/nominatim-geocoding.provider.ts's

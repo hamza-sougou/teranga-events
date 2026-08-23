@@ -5,7 +5,7 @@
 /* Design tokens — docs/DESIGN_SYSTEM.md §2. Every color in this app must
    reference one of these, never a hardcoded hex value. */
 :root {
-  --bg: #f6f4ee;
+  --bg: #fdfdeb;
   --card: #ffffff;
   --ink: #17121f;
   --ink-2: #241c33;

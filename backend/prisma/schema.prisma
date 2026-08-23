@@ -186,6 +186,14 @@ enum EventMediaType {
   @@map("event_media_type")
 }
 
+enum DressCodeAudience {
+  EVERYONE @map("everyone")
+  MEN      @map("men")
+  WOMEN    @map("women")
+
+  @@map("dress_code_audience")
+}
+
 // ============================================================
 // 2. UTILISATEURS
 // ============================================================
@@ -308,6 +316,10 @@ model Event {
   longitude      Decimal?    @db.Decimal(9, 6)
   categoryId     String?     @map("category_id") @db.Uuid
   status         EventStatus @default(DRAFT)
+  // Paramètres optionnels : âge minimum requis, null = tout le monde. Pas de
+  // structure séparée pour un raccourci "18+" — c'est juste minAge = 18,
+  // décidé côté frontend uniquement.
+  minAge         Int?        @map("min_age")
   startAt        DateTime    @map("start_at") @db.Timestamptz(6)
   endAt          DateTime    @map("end_at") @db.Timestamptz(6)
   createdBy      String      @map("created_by") @db.Uuid
@@ -322,6 +334,7 @@ model Event {
   orders        Order[]
   payout        Payout?
   media         EventMedia[]
+  dressCodes    EventDressCode[]
 
   // CHECK (end_at > start_at), CHECK ((latitude IS NULL) = (longitude IS NULL))
   // — chk_events_lat_lng_paired, see db/schema.sql, not enforced by Prisma
@@ -348,6 +361,27 @@ model EventMedia {
   // CHECK (size_bytes > 0) — see db/schema.sql, not enforced by Prisma.
   @@index([eventId], map: "idx_event_media_event")
   @@map("event_media")
+}
+
+// ============================================================
+// 4C. DRESS CODE DES ÉVÈNEMENTS (paramètres optionnels) — voir db/schema.sql section 4C
+// ============================================================
+// Max 3 entrées par valeur de appliesTo, compartiments indépendants —
+// enforced in EventsService (assertDressCodeLimits), deliberately not a SQL
+// CHECK/trigger: cosmetic constraint, not on par with the anti-oversell/scan
+// invariants. See CLAUDE.md "Critical business rules".
+model EventDressCode {
+  id        String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  eventId   String            @map("event_id") @db.Uuid
+  label     String            @db.VarChar(25)
+  appliesTo DressCodeAudience @default(EVERYONE) @map("applies_to")
+  sortOrder Int               @map("sort_order")
+  createdAt DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@index([eventId], map: "idx_event_dress_codes_event")
+  @@map("event_dress_codes")
 }
 
 // ============================================================

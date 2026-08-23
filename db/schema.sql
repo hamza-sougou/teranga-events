@@ -21,6 +21,13 @@ CREATE TYPE member_status AS ENUM ('pending', 'active', 'suspended');
 
 CREATE TYPE event_status AS ENUM ('draft', 'published', 'cancelled', 'completed');
 
+-- Paramètres optionnels d'évènement (section 4C) : à qui s'adresse une entrée
+-- de dress code. La limite de 3 entrées par valeur (compartiments
+-- indépendants, pas de comptage croisé) est validée côté application
+-- (EventsService), volontairement pas en CHECK/trigger SQL — contrainte
+-- cosmétique, pas critique comme l'anti-survente ou l'anti-fraude scan.
+CREATE TYPE dress_code_audience AS ENUM ('everyone', 'men', 'women');
+
 CREATE TYPE ticket_category AS ENUM ('standard', 'vip', 'early_bird', 'presale', 'group');
 
 CREATE TYPE ticket_access_mode AS ENUM ('public', 'presale_whitelist', 'private_link');
@@ -168,6 +175,10 @@ CREATE TABLE events (
   longitude         DECIMAL(9,6),
   category_id       UUID REFERENCES event_categories(id),
   status            event_status NOT NULL DEFAULT 'draft',
+  -- Paramètres optionnels : âge minimum requis, NULL = tout le monde. Pas de
+  -- champ séparé pour un raccourci "18+" — c'est juste min_age = 18, un
+  -- raccourci d'interface côté frontend, pas une structure de données à part.
+  min_age           INTEGER,
   start_at          TIMESTAMPTZ NOT NULL,
   end_at            TIMESTAMPTZ NOT NULL,
   created_by        UUID NOT NULL REFERENCES users(id),
@@ -213,6 +224,28 @@ CREATE TABLE event_media (
 );
 
 CREATE INDEX idx_event_media_event ON event_media (event_id);
+
+
+-- ============================================================
+-- 4C. DRESS CODE DES ÉVÈNEMENTS (paramètres optionnels)
+-- ============================================================
+-- Une entrée = un libellé (ex: "Costume", "Robe longue") rattaché à une
+-- catégorie de public. Règle : maximum 3 entrées par valeur de applies_to,
+-- les trois compartiments (everyone/men/women) sont indépendants — pas de
+-- comptage croisé, donc jusqu'à 9 lignes au total par évènement. Validée
+-- côté application (EventsService), volontairement PAS en CHECK/trigger SQL
+-- ici — voir le commentaire sur dress_code_audience plus haut.
+
+CREATE TABLE event_dress_codes (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  event_id    UUID NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+  label       VARCHAR(25) NOT NULL,
+  applies_to  dress_code_audience NOT NULL DEFAULT 'everyone',
+  sort_order  INTEGER NOT NULL,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_event_dress_codes_event ON event_dress_codes (event_id);
 
 
 -- ============================================================

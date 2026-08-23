@@ -8,10 +8,13 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { FormField } from '@/components/ui/form-field';
 import { Button } from '@/components/ui/button';
+import { Panel } from '@/components/ui/panel';
 import { CategorySelect } from '@/components/events/category-select';
 import { EventLocationPicker } from '@/components/events/event-location-picker';
+import { MinAgeField } from '@/components/events/min-age-field';
+import { DressCodeEditor } from '@/components/events/dress-code-editor';
 import { slugify, toDatetimeLocalValue } from '@/lib/utils';
-import type { Event } from '@/types';
+import type { DressCodeAudience, Event } from '@/types';
 
 // Mirrors backend/src/events/dto/create-event.dto.ts's validation rules
 // client-side for earlier feedback — the server still re-validates, this is
@@ -30,6 +33,15 @@ const eventSchema = z
     categoryId: z.string().optional(),
     startAt: z.string().min(1, 'Date de début requise.'),
     endAt: z.string().min(1, 'Date de fin requise.'),
+    minAge: z.number().int().min(0).max(99).nullable().optional(),
+    dressCodes: z
+      .array(
+        z.object({
+          label: z.string().min(1, 'Libellé requis.').max(25, '25 caractères maximum.'),
+          appliesTo: z.enum(['EVERYONE', 'MEN', 'WOMEN']),
+        }),
+      )
+      .optional(),
   })
   .refine((data) => new Date(data.endAt) > new Date(data.startAt), {
     message: 'La date de fin doit être après la date de début.',
@@ -51,6 +63,11 @@ export interface EventFormSubmitPayload {
   categoryId?: string;
   startAt: string;
   endAt: string;
+  // Paramètres optionnels — always sent explicitly (never omitted) so an
+  // organizer can clear a previously-set value: minAge: null must reach the
+  // server as null, not as an absent field the backend would leave untouched.
+  minAge: number | null;
+  dressCodes: { label: string; appliesTo: DressCodeAudience }[];
 }
 
 interface EventFormProps {
@@ -68,6 +85,7 @@ export function EventForm({ mode, defaultValues, disabled, submitLabel, submitti
     handleSubmit,
     watch,
     setValue,
+    control,
     formState: { errors, dirtyFields },
   } = useForm<EventFormValues>({
     resolver: zodResolver(eventSchema),
@@ -86,6 +104,8 @@ export function EventForm({ mode, defaultValues, disabled, submitLabel, submitti
       categoryId: defaultValues?.categoryId ?? '',
       startAt: defaultValues?.startAt ? toDatetimeLocalValue(defaultValues.startAt) : '',
       endAt: defaultValues?.endAt ? toDatetimeLocalValue(defaultValues.endAt) : '',
+      minAge: defaultValues?.minAge ?? null,
+      dressCodes: defaultValues?.dressCodes?.map((d) => ({ label: d.label, appliesTo: d.appliesTo })) ?? [],
     },
   });
 
@@ -112,6 +132,8 @@ export function EventForm({ mode, defaultValues, disabled, submitLabel, submitti
       categoryId: values.categoryId || undefined,
       startAt: new Date(values.startAt).toISOString(),
       endAt: new Date(values.endAt).toISOString(),
+      minAge: values.minAge ?? null,
+      dressCodes: values.dressCodes ?? [],
     });
   }
 
@@ -194,6 +216,23 @@ export function EventForm({ mode, defaultValues, disabled, submitLabel, submitti
       <FormField label="Description" htmlFor="description">
         <Textarea id="description" disabled={disabled} rows={4} {...register('description')} />
       </FormField>
+
+      <Panel title="Paramètres optionnels">
+        <div className="space-y-5">
+          <MinAgeField
+            value={watch('minAge') ?? null}
+            onChange={(minAge) => setValue('minAge', minAge, { shouldDirty: true })}
+            disabled={disabled}
+          />
+          <DressCodeEditor
+            control={control}
+            register={register}
+            errors={errors.dressCodes}
+            disabled={disabled}
+            hasInitialEntries={!!defaultValues?.dressCodes?.length}
+          />
+        </div>
+      </Panel>
 
       {!disabled && (
         <Button type="submit" loading={submitting}>
