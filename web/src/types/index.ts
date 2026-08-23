@@ -11,6 +11,7 @@ export type TicketCategory = 'STANDARD' | 'VIP' | 'EARLY_BIRD' | 'PRESALE' | 'GR
 export type TicketAccessMode = 'PUBLIC' | 'PRESALE_WHITELIST' | 'PRIVATE_LINK';
 export type EventMediaType = 'IMAGE' | 'VIDEO';
 export type DressCodeAudience = 'EVERYONE' | 'MEN' | 'WOMEN';
+export type ScanResult = 'SUCCESS' | 'ALREADY_USED' | 'INVALID' | 'EXPIRED_EVENT';
 
 export interface Organization {
   id: string;
@@ -135,4 +136,39 @@ export interface TicketTypeWhitelist {
   email: string;
   usedAt: string | null;
   createdAt: string;
+}
+
+export interface OrderItem {
+  id: string;
+  ticketTypeId: string;
+  quantity: number;
+  // Prisma Decimal serializes as a string over JSON — same as TicketType.price.
+  unitPrice: string;
+  subtotal: string;
+  // Only joined on the organizer orders list (GET .../events/:eventId/orders).
+  ticketType?: { id: string; name: string };
+}
+
+export interface Order {
+  id: string;
+  eventId: string;
+  buyerEmail: string;
+  buyerPhone: string | null;
+  status: OrderStatus;
+  subtotalAmount: string;
+  serviceFeeAmount: string;
+  totalAmount: string;
+  currency: string;
+  expiresAt: string;
+  createdAt: string;
+  items: OrderItem[];
+}
+
+export interface Scan {
+  id: string;
+  result: ScanResult;
+  gateOrZone: string | null;
+  scannedAt: string;
+  ticket: { id: string; ticketType: { id: string; name: string } };
+  controller: { id: string; fullName: string };
 }

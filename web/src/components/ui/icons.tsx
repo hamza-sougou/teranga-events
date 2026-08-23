@@ -13,6 +13,7 @@ import image from '@iconify-icons/lucide/image';
 import video from '@iconify-icons/lucide/video';
 import uploadCloud from '@iconify-icons/lucide/upload-cloud';
 import search from '@iconify-icons/lucide/search';
+import download from '@iconify-icons/lucide/download';
 
 type IconProps = { className?: string };
 
@@ -58,4 +59,8 @@ export function UploadCloudIcon({ className }: IconProps) {
 
 export function SearchIcon({ className }: IconProps) {
   return <Icon icon={search} className={className} />;
+}
+
+export function DownloadIcon({ className }: IconProps) {
+  return <Icon icon={download} className={className} />;
 }

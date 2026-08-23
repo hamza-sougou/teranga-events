@@ -15,4 +15,6 @@ export const queryKeys = {
   orgStats: (organizationId?: string) => ['org-stats', organizationId],
   media: (organizationId?: string, eventId?: string) => ['org-event-media', organizationId, eventId],
   eventCategories: () => ['event-categories'],
+  orders: (organizationId?: string, eventId?: string) => ['org-event-orders', organizationId, eventId],
+  scans: (organizationId?: string, eventId?: string) => ['org-event-scans', organizationId, eventId],
 };

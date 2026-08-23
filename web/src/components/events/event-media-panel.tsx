@@ -60,6 +60,10 @@ export function EventMediaPanel({ organizationId, eventId, canEdit }: EventMedia
     enabled: !!organizationId && !!eventId,
   });
   const media = mediaQuery.data ?? [];
+  // First IMAGE in upload order (media is already sorted createdAt asc, same
+  // order the public event page reads) is the one used as the event's
+  // card/thumbnail once published.
+  const firstImageId = media.find((item) => item.type === 'IMAGE')?.id;
 
   const deleteMutation = useMutation({
     mutationFn: (mediaId: string) => apiClient.delete(`${baseUrl}/${mediaId}`),
@@ -206,29 +210,44 @@ export function EventMediaPanel({ organizationId, eventId, canEdit }: EventMedia
       ) : media.length === 0 && pendingUploads.length === 0 ? (
         <p className="text-sm text-text-muted">Aucun média pour l&apos;instant.</p>
       ) : (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-          {media.map((item) => (
-            <div key={item.id} className="relative overflow-hidden rounded border border-border">
-              {item.type === 'IMAGE' ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={item.url} alt={item.originalFilename ?? ''} className="aspect-square w-full object-cover" />
-              ) : (
-                <video src={item.url} controls className="aspect-square w-full bg-ink object-cover" />
-              )}
-              {canEdit && (
-                <button
-                  type="button"
-                  aria-label="Supprimer"
-                  disabled={deleteMutation.isPending}
-                  onClick={() => deleteMutation.mutate(item.id)}
-                  className="absolute right-1.5 top-1.5 flex h-7 w-7 items-center justify-center rounded bg-overlay text-on-dark hover:bg-danger"
-                >
-                  <TrashIcon className="h-3.5 w-3.5" />
-                </button>
-              )}
-            </div>
-          ))}
-        </div>
+        <>
+          {firstImageId && (
+            <p className="mb-2.5 text-[11px] text-text-muted">
+              La première image ajoutée sert de couverture (carte/vignette de l&apos;évènement).
+            </p>
+          )}
+          <div className="grid grid-cols-3 gap-2.5 sm:grid-cols-4 lg:grid-cols-5">
+            {media.map((item) => {
+              const isCover = item.type === 'IMAGE' && item.id === firstImageId;
+              return (
+                <div key={item.id} className="relative overflow-hidden rounded border border-border">
+                  {item.type === 'IMAGE' ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={item.url} alt={item.originalFilename ?? ''} className="aspect-square w-full object-cover" />
+                  ) : (
+                    <video src={item.url} controls className="aspect-square w-full bg-ink object-cover" />
+                  )}
+                  {isCover && (
+                    <span className="absolute bottom-1 left-1 rounded bg-overlay px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-on-dark">
+                      Couverture
+                    </span>
+                  )}
+                  {canEdit && (
+                    <button
+                      type="button"
+                      aria-label="Supprimer"
+                      disabled={deleteMutation.isPending}
+                      onClick={() => deleteMutation.mutate(item.id)}
+                      className="absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded bg-overlay text-on-dark hover:bg-danger"
+                    >
+                      <TrashIcon className="h-3 w-3" />
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </>
       )}
     </Panel>
   );

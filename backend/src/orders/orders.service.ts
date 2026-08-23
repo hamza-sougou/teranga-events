@@ -180,7 +180,7 @@ export class OrdersService {
     }
     return this.prisma.order.findMany({
       where: { eventId },
-      include: { items: true },
+      include: { items: { include: { ticketType: { select: { id: true, name: true } } } } },
       orderBy: { createdAt: 'desc' },
     });
   }

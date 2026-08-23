@@ -65,7 +65,7 @@ describe('Orders — checkout & expiration (e2e)', () => {
     const email = `organizer-${unique}@example.com`;
     createdUserEmails.push(email);
 
-    const { user } = await authService.register({
+    const { user, accessToken } = await authService.register({
       email,
       password: 'super-secret-password',
       fullName: 'Amadou Ba',
@@ -74,7 +74,7 @@ describe('Orders — checkout & expiration (e2e)', () => {
     });
 
     const organization = await prisma.organization.findFirstOrThrow({ where: { ownerUserId: user.id } });
-    return { organizationId: organization.id, userId: user.id };
+    return { organizationId: organization.id, userId: user.id, accessToken };
   }
 
   async function createPublishedEvent(organizationId: string, userId: string) {
@@ -285,5 +285,69 @@ describe('Orders — checkout & expiration (e2e)', () => {
     expect(tickets.every((t) => t.status === 'CANCELLED')).toBe(true);
     const refreshedType = await prisma.ticketType.findUniqueOrThrow({ where: { id: ticketType.id } });
     expect(refreshedType.quantitySold).toBe(0);
+  });
+
+  describe('organizer read: GET .../events/:eventId/orders', () => {
+    it('returns an empty list for an event with no orders', async () => {
+      const { organizationId, userId, accessToken } = await registerOrganizer();
+      const event = await createPublishedEvent(organizationId, userId);
+
+      const res = await request(app.getHttpServer())
+        .get(`/organizations/${organizationId}/events/${event.id}/orders`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(200);
+
+      expect(res.body).toEqual([]);
+    });
+
+    it('lists orders scoped to the event, newest first, with the ticket type name joined', async () => {
+      const { organizationId, userId, accessToken } = await registerOrganizer();
+      const event = await createPublishedEvent(organizationId, userId);
+      const ticketType = await createOnSaleTicketType(organizationId, event.id, 10);
+      mockCreateInvoice();
+
+      const first = await request(app.getHttpServer())
+        .post('/orders')
+        .send({
+          eventId: event.id,
+          buyerEmail: 'first@example.com',
+          paymentChannel: 'MOBILE_MONEY',
+          items: [{ ticketTypeId: ticketType.id, quantity: 1 }],
+        })
+        .expect(201);
+      const second = await request(app.getHttpServer())
+        .post('/orders')
+        .send({
+          eventId: event.id,
+          buyerEmail: 'second@example.com',
+          paymentChannel: 'MOBILE_MONEY',
+          items: [{ ticketTypeId: ticketType.id, quantity: 2 }],
+        })
+        .expect(201);
+
+      const res = await request(app.getHttpServer())
+        .get(`/organizations/${organizationId}/events/${event.id}/orders`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(200);
+
+      expect(res.body).toHaveLength(2);
+      // Newest first — the second checkout comes back before the first.
+      expect(res.body[0].id).toBe(second.body.orderId);
+      expect(res.body[1].id).toBe(first.body.orderId);
+      expect(res.body[0].buyerEmail).toBe('second@example.com');
+      expect(res.body[0].items).toHaveLength(1);
+      expect(res.body[0].items[0].ticketType).toMatchObject({ id: ticketType.id, name: 'Standard' });
+    });
+
+    it('rejects a user with no membership in the organization with 403', async () => {
+      const { organizationId, userId } = await registerOrganizer();
+      const event = await createPublishedEvent(organizationId, userId);
+      const outsider = await registerOrganizer();
+
+      await request(app.getHttpServer())
+        .get(`/organizations/${organizationId}/events/${event.id}/orders`)
+        .set('Authorization', `Bearer ${outsider.accessToken}`)
+        .expect(403);
+    });
   });
 });

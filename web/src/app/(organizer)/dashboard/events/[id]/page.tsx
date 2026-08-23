@@ -17,6 +17,8 @@ import { EventForm, type EventFormSubmitPayload } from '@/components/events/even
 import { EventStatusControl } from '@/components/events/event-status-control';
 import { TicketTypesPanel } from '@/components/events/ticket-types-panel';
 import { EventMediaPanel } from '@/components/events/event-media-panel';
+import { OrdersPanel } from '@/components/events/orders-panel';
+import { ScansPanel } from '@/components/events/scans-panel';
 import type { Event } from '@/types';
 
 export default function EventDetailPage() {
@@ -66,6 +68,8 @@ export default function EventDetailPage() {
 
       <div className="grid grid-cols-1 gap-[18px] lg:grid-cols-[1.6fr_1fr]">
         <div>
+          <EventMediaPanel organizationId={organizationId!} eventId={eventId} canEdit={canEdit} />
+
           <Panel title="Détails">
             {updateMutation.isError && <InlineBanner tone="error">{getApiErrorMessage(updateMutation.error)}</InlineBanner>}
             {updateMutation.isSuccess && <InlineBanner tone="success">Évènement mis à jour.</InlineBanner>}
@@ -81,7 +85,9 @@ export default function EventDetailPage() {
 
           <TicketTypesPanel organizationId={organizationId!} eventId={eventId} canEdit={canEdit} />
 
-          <EventMediaPanel organizationId={organizationId!} eventId={eventId} canEdit={canEdit} />
+          <OrdersPanel organizationId={organizationId!} eventId={eventId} eventSlug={event.slug} />
+
+          <ScansPanel organizationId={organizationId!} eventId={eventId} />
         </div>
 
         <div>

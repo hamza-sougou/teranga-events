@@ -1,5 +1,5 @@
 import { cn } from '@/lib/utils';
-import type { EventStatus, PayoutStatus } from '@/types';
+import type { EventStatus, OrderStatus, PayoutStatus, ScanResult } from '@/types';
 
 type BadgeTone = 'positive' | 'pending' | 'neutral';
 
@@ -47,5 +47,34 @@ const PAYOUT_STATUS: Record<PayoutStatus, { label: string; tone: BadgeTone }> = 
 
 export function PayoutStatusBadge({ status }: { status: PayoutStatus }) {
   const { label, tone } = PAYOUT_STATUS[status];
+  return <Badge label={label} tone={tone} />;
+}
+
+const ORDER_STATUS: Record<OrderStatus, { label: string; tone: BadgeTone }> = {
+  PAID: { label: 'Payée', tone: 'positive' },
+  PENDING: { label: 'En attente', tone: 'pending' },
+  CANCELLED: { label: 'Annulée', tone: 'neutral' },
+  REFUNDED: { label: 'Remboursée', tone: 'neutral' },
+  EXPIRED: { label: 'Expirée', tone: 'neutral' },
+};
+
+export function OrderStatusBadge({ status }: { status: OrderStatus }) {
+  const { label, tone } = ORDER_STATUS[status];
+  return <Badge label={label} tone={tone} />;
+}
+
+// ALREADY_USED/INVALID/EXPIRED_EVENT map to "pending" (amber) rather than
+// "neutral" — a rejected scan attempt is a security-relevant event a
+// controller should notice, closer to "prudence" than "ended/neutral"
+// (docs/DESIGN_SYSTEM.md §3). Never a 4th color for this.
+const SCAN_RESULT: Record<ScanResult, { label: string; tone: BadgeTone }> = {
+  SUCCESS: { label: 'Validé', tone: 'positive' },
+  ALREADY_USED: { label: 'Déjà utilisé', tone: 'pending' },
+  INVALID: { label: 'Invalide', tone: 'pending' },
+  EXPIRED_EVENT: { label: 'Évènement terminé', tone: 'pending' },
+};
+
+export function ScanResultBadge({ result }: { result: ScanResult }) {
+  const { label, tone } = SCAN_RESULT[result];
   return <Badge label={label} tone={tone} />;
 }
