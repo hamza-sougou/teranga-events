@@ -54,6 +54,12 @@ export interface Event {
   description: string | null;
   venueName: string | null;
   address: string | null;
+  country: string | null;
+  city: string | null;
+  // Prisma Decimal serializes as a string over JSON, same reason as
+  // TicketType.price below — convert with Number() at usage sites.
+  latitude: string | null;
+  longitude: string | null;
   categoryId: string | null;
   category: EventCategory | null;
   status: EventStatus;
@@ -65,6 +71,19 @@ export interface Event {
   // Only present on the detail endpoint (GET .../events/:eventId) — the
   // list endpoint deliberately omits it, nothing there renders a gallery.
   media?: EventMedia[];
+}
+
+// Mirrors backend/src/geocoding/providers/nominatim-geocoding.provider.ts's
+// NormalizedPlace — one search result from GET /geocode/search.
+export interface NormalizedPlace {
+  placeId: number;
+  name: string;
+  displayName: string;
+  country: string;
+  city: string;
+  road: string;
+  latitude: number;
+  longitude: number;
 }
 
 export interface EventMedia {

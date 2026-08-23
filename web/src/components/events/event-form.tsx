@@ -9,6 +9,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { FormField } from '@/components/ui/form-field';
 import { Button } from '@/components/ui/button';
 import { CategorySelect } from '@/components/events/category-select';
+import { EventLocationPicker } from '@/components/events/event-location-picker';
 import { slugify, toDatetimeLocalValue } from '@/lib/utils';
 import type { Event } from '@/types';
 
@@ -22,6 +23,10 @@ const eventSchema = z
     description: z.string().optional(),
     venueName: z.string().optional(),
     address: z.string().optional(),
+    country: z.string().optional(),
+    city: z.string().optional(),
+    latitude: z.number().nullable().optional(),
+    longitude: z.number().nullable().optional(),
     categoryId: z.string().optional(),
     startAt: z.string().min(1, 'Date de début requise.'),
     endAt: z.string().min(1, 'Date de fin requise.'),
@@ -39,6 +44,10 @@ export interface EventFormSubmitPayload {
   description?: string;
   venueName?: string;
   address?: string;
+  country?: string;
+  city?: string;
+  latitude?: number;
+  longitude?: number;
   categoryId?: string;
   startAt: string;
   endAt: string;
@@ -68,6 +77,12 @@ export function EventForm({ mode, defaultValues, disabled, submitLabel, submitti
       description: defaultValues?.description ?? '',
       venueName: defaultValues?.venueName ?? '',
       address: defaultValues?.address ?? '',
+      country: defaultValues?.country ?? '',
+      city: defaultValues?.city ?? '',
+      // Event.latitude/longitude arrive as strings (Decimal serialized over
+      // JSON, same as TicketType.price) — convert once here.
+      latitude: defaultValues?.latitude != null ? Number(defaultValues.latitude) : null,
+      longitude: defaultValues?.longitude != null ? Number(defaultValues.longitude) : null,
       categoryId: defaultValues?.categoryId ?? '',
       startAt: defaultValues?.startAt ? toDatetimeLocalValue(defaultValues.startAt) : '',
       endAt: defaultValues?.endAt ? toDatetimeLocalValue(defaultValues.endAt) : '',
@@ -90,6 +105,10 @@ export function EventForm({ mode, defaultValues, disabled, submitLabel, submitti
       description: values.description || undefined,
       venueName: values.venueName || undefined,
       address: values.address || undefined,
+      country: values.country || undefined,
+      city: values.city || undefined,
+      latitude: values.latitude ?? undefined,
+      longitude: values.longitude ?? undefined,
       categoryId: values.categoryId || undefined,
       startAt: new Date(values.startAt).toISOString(),
       endAt: new Date(values.endAt).toISOString(),
@@ -121,22 +140,55 @@ export function EventForm({ mode, defaultValues, disabled, submitLabel, submitti
         </FormField>
       </div>
 
+      <FormField label="Catégorie" htmlFor="categoryId">
+        <CategorySelect
+          id="categoryId"
+          value={watch('categoryId')}
+          onChange={(categoryId) => setValue('categoryId', categoryId, { shouldDirty: true })}
+          disabled={disabled}
+        />
+      </FormField>
+
+      <FormField
+        label="Localisation"
+        htmlFor="locationSearch"
+        hint="Recherchez un lieu (OpenStreetMap) ou cliquez sur la carte pour placer le point manuellement."
+      >
+        <EventLocationPicker
+          id="locationSearch"
+          disabled={disabled}
+          latitude={watch('latitude') ?? null}
+          longitude={watch('longitude') ?? null}
+          onSelectResult={(result) => {
+            setValue('country', result.country, { shouldDirty: true });
+            setValue('city', result.city, { shouldDirty: true });
+            setValue('address', result.address, { shouldDirty: true });
+            setValue('venueName', result.venueName, { shouldDirty: true });
+            setValue('latitude', result.latitude, { shouldDirty: true });
+            setValue('longitude', result.longitude, { shouldDirty: true });
+          }}
+          onMapClick={(lat, lng) => {
+            setValue('latitude', lat, { shouldDirty: true });
+            setValue('longitude', lng, { shouldDirty: true });
+          }}
+        />
+      </FormField>
+
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <FormField label="Catégorie" htmlFor="categoryId">
-          <CategorySelect
-            id="categoryId"
-            value={watch('categoryId')}
-            onChange={(categoryId) => setValue('categoryId', categoryId, { shouldDirty: true })}
-            disabled={disabled}
-          />
+        <FormField label="Pays" htmlFor="country">
+          <Input id="country" disabled={disabled} {...register('country')} />
         </FormField>
-        <FormField label="Lieu" htmlFor="venueName">
-          <Input id="venueName" disabled={disabled} {...register('venueName')} />
+        <FormField label="Ville" htmlFor="city">
+          <Input id="city" disabled={disabled} {...register('city')} />
         </FormField>
       </div>
 
       <FormField label="Adresse" htmlFor="address">
         <Input id="address" disabled={disabled} {...register('address')} />
+      </FormField>
+
+      <FormField label="Lieu" htmlFor="venueName">
+        <Input id="venueName" disabled={disabled} {...register('venueName')} />
       </FormField>
 
       <FormField label="Description" htmlFor="description">

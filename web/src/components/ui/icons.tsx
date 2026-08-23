@@ -12,6 +12,7 @@ import chevronRight from '@iconify-icons/lucide/chevron-right';
 import image from '@iconify-icons/lucide/image';
 import video from '@iconify-icons/lucide/video';
 import uploadCloud from '@iconify-icons/lucide/upload-cloud';
+import search from '@iconify-icons/lucide/search';
 
 type IconProps = { className?: string };
 
@@ -53,4 +54,8 @@ export function VideoIcon({ className }: IconProps) {
 
 export function UploadCloudIcon({ className }: IconProps) {
   return <Icon icon={uploadCloud} className={className} />;
+}
+
+export function SearchIcon({ className }: IconProps) {
+  return <Icon icon={search} className={className} />;
 }
