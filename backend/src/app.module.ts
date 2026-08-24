@@ -11,6 +11,7 @@ import { PrismaModule } from './prisma/prisma.module';
 import { HealthModule } from './health/health.module';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
+import { OrganizationsModule } from './organizations/organizations.module';
 import { TeamsModule } from './teams/teams.module';
 import { EventsModule } from './events/events.module';
 import { EventCategoriesModule } from './event-categories/event-categories.module';
@@ -44,6 +45,7 @@ const isTestEnv = process.env.NODE_ENV === 'test';
     HealthModule,
     AuthModule,
     UsersModule,
+    OrganizationsModule,
     TeamsModule,
     EventsModule,
     EventCategoriesModule,

@@ -15,3 +15,11 @@ export function canManageEvents(role?: MemberRole | null): boolean {
 export function canManageTeam(role?: MemberRole | null): boolean {
   return !!role && MANAGE_ROLES.includes(role);
 }
+
+// Mirrors backend/src/organizations/organizations.controller.ts's
+// MANAGE_PAYOUT_METHOD_ROLES — payout_phone_number is the real destination
+// of the organization's money, restricted to OWNER only, unlike the rest of
+// the organization profile (MANAGE_ROLES above).
+export function canManagePayoutMethod(role?: MemberRole | null): boolean {
+  return role === 'OWNER';
+}

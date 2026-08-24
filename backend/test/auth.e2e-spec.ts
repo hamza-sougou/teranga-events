@@ -163,4 +163,87 @@ describe('Auth (e2e)', () => {
       expect(count).toBe(1);
     });
   });
+
+  describe('PATCH /auth/password', () => {
+    it('changes the password when the current one is correct', async () => {
+      const payload = registerPayload();
+      createdUserEmails.push(payload.email);
+      const registered = await request(app.getHttpServer()).post('/auth/register').send(payload).expect(201);
+
+      await request(app.getHttpServer())
+        .patch('/auth/password')
+        .set('Authorization', `Bearer ${registered.body.accessToken}`)
+        .send({ currentPassword: payload.password, newPassword: 'a-brand-new-password' })
+        .expect(200);
+
+      await request(app.getHttpServer())
+        .post('/auth/login')
+        .send({ email: payload.email, password: payload.password })
+        .expect(401);
+
+      await request(app.getHttpServer())
+        .post('/auth/login')
+        .send({ email: payload.email, password: 'a-brand-new-password' })
+        .expect(201);
+    });
+
+    it('rejects a wrong current password', async () => {
+      const payload = registerPayload();
+      createdUserEmails.push(payload.email);
+      const registered = await request(app.getHttpServer()).post('/auth/register').send(payload).expect(201);
+
+      await request(app.getHttpServer())
+        .patch('/auth/password')
+        .set('Authorization', `Bearer ${registered.body.accessToken}`)
+        .send({ currentPassword: 'not-the-right-password', newPassword: 'a-brand-new-password' })
+        .expect(401);
+    });
+
+    it('rejects changing the password on a Google-only account with a clear error, not a crash', async () => {
+      const unique = randomUUID();
+      const email = `googleonly-${unique}@example.com`;
+      createdUserEmails.push(email);
+
+      const google = await authService.loginWithGoogle({
+        googleId: `google-${unique}`,
+        email,
+        fullName: 'Aissatou Sow',
+      });
+
+      const res = await request(app.getHttpServer())
+        .patch('/auth/password')
+        .set('Authorization', `Bearer ${google.accessToken}`)
+        .send({ currentPassword: 'anything', newPassword: 'a-brand-new-password' })
+        .expect(400);
+
+      expect(res.body.message).toMatch(/Google/);
+    });
+
+    it('exposes hasPassword on GET /auth/me for both account types', async () => {
+      const payload = registerPayload();
+      createdUserEmails.push(payload.email);
+      const registered = await request(app.getHttpServer()).post('/auth/register').send(payload).expect(201);
+
+      const classicMe = await request(app.getHttpServer())
+        .get('/auth/me')
+        .set('Authorization', `Bearer ${registered.body.accessToken}`)
+        .expect(200);
+      expect(classicMe.body.hasPassword).toBe(true);
+
+      const unique = randomUUID();
+      const email = `googleonly2-${unique}@example.com`;
+      createdUserEmails.push(email);
+      const google = await authService.loginWithGoogle({
+        googleId: `google-${unique}`,
+        email,
+        fullName: 'Ibrahima Fall',
+      });
+
+      const googleMe = await request(app.getHttpServer())
+        .get('/auth/me')
+        .set('Authorization', `Bearer ${google.accessToken}`)
+        .expect(200);
+      expect(googleMe.body.hasPassword).toBe(false);
+    });
+  });
 });

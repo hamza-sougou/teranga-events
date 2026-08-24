@@ -158,6 +158,17 @@ Frontend : socle (design tokens, React Query, client API) + page **Tableau de bo
 - Tests e2e ajoutés à `payouts.e2e-spec.ts` (4 nouveaux, describe dédié) : évènement pas terminé + commande payée (inclus, calculé en direct), évènement terminé sans ligne payout (inclus, calculé en direct), évènement avec payout `PAID` (montants et statut reflétés), isolation inter-organisation. **11/11 tests passent** dans ce fichier.
 - Vérifié visuellement (Playwright 375/768/1280px, 3 évènements réels seedés couvrant les 3 états d'affichage + un compte séparé pour l'état vide), zéro erreur console/requête en échec. Données de test nettoyées après coup (`payouts`/`orders`/`events`/`organization_members`/`organizations`/`users` de test supprimés via `psql`, dépendants avant parents).
 
+### 12sexies. Backend + Frontend web — Paramètres du compte (6ᵉ page organisateur)
+- **Nouveau module backend `organizations`** (`backend/src/organizations/`, absent jusqu'ici — les sous-ressources `teams`/`payouts`/`events` avaient chacune leur contrôleur scopé `/organizations/:organizationId/...`, mais rien ne gérait `/organizations/:organizationId` lui-même) :
+  - `GET /organizations/:id` — profil complet (`name`/`contactEmail`/`contactPhone`/`payoutPhoneNumber`/`isVerified`), ouvert à tout membre actif.
+  - `PATCH /organizations/:id` — `name`/`contactEmail`/`contactPhone`, `MANAGE_ROLES` (`OWNER`/`CO_ORGANIZER`, même RBAC que `teams`/`events`).
+  - `PATCH /organizations/:id/payout-method` — `payoutPhoneNumber` seul, **`OWNER` uniquement**. Endpoint séparé volontairement plus strict : c'est la destination réelle de l'argent au déboursement PayDunya (`docs/SPEC.md §6`) — un `CO_ORGANIZER` compromis ne doit pas pouvoir la rediriger, contrairement au reste du profil (réversible, pas de mouvement d'argent immédiat).
+  - Première validation de format téléphone du projet (`SENEGAL_PHONE_REGEX = /^(\+221)?7\d{8}$/`, `backend/src/organizations/dto/phone.validator.ts`) — aucun précédent à réutiliser, format proposé et validé.
+- **`PATCH /auth/password`** (extension du module `auth` existant) — `currentPassword`/`newPassword`, authentifié seul. Compte 100 % Google (`user.passwordHash === null`, créé via `AuthService.loginWithGoogle` sans mot de passe) → `400` explicite ("Google Sign-In... pas de mot de passe à modifier"), jamais un crash ni un bypass. `GET /auth/me` expose désormais `hasPassword: boolean` (calculé, jamais le hash) pour piloter l'affichage frontend.
+- Tests : `organizations.e2e-spec.ts` (nouveau, 8 tests — RBAC profil/payout-method, validation téléphone, cas nominal) + 4 tests ajoutés à `auth.e2e-spec.ts` (mauvais mot de passe actuel, compte Google pur, `hasPassword` sur les deux types de compte, cas nominal avec vérification que l'ancien mot de passe ne fonctionne plus). **20/20 tests passent**, `tsc --noEmit`/`lint` propres.
+- **Frontend** (`/dashboard/settings`, lien sidebar préexistant, stub vide jusqu'ici) — trois panneaux : "Organisation" (nom/email/téléphone), "Reversement" (numéro mobile money, sous-bloc séparé reflétant l'endpoint dédié), "Mon compte" (changement de mot de passe, ou message explicite si `hasPassword === false`). RBAC réel du backend, jamais supposé côté client (`canManageTeam`/`canManagePayoutMethod` dans `web/src/lib/rbac.ts`) : champs non autorisés affichés désactivés (pas masqués) sans bouton "Enregistrer", pour qu'un rôle en lecture seule (ex. Comptable) voie quand même la configuration.
+- Vérifié visuellement (Playwright 375/768/1280px, compte OWNER réel + un compte SELLER seedé directement en base pour confirmer le rendu désactivé/RBAC), zéro erreur console/requête en échec aux deux rôles. Données de test nettoyées après coup (`organization_members`/`organizations`/`users` de test supprimés via `psql`, dépendants avant parents).
+
 ### 13. Documentation
 - `docs/SPEC.md` — spec produit/technique à jour (PayDunya comme unique prestataire actif, modèle de commission, règle de reversement).
 - `docs/MODULE_PAIEMENT_SPEC.md` — spec technique complète du module Vente & Paiement, implémentée et vérifiée.
@@ -191,7 +202,7 @@ Construction page par page en cours, une session Claude Code dédiée par page (
 - ✅ **Détail des ventes / historique de scan** (deux panneaux sur la page évènement, pas de nouvelle route) — construit et vérifié visuellement, non commité (section 12ter ci-dessus).
 - ✅ **Équipe** (`/dashboard/team` — liste, invitation, modification de rôle, retrait, RBAC) — construit et vérifié visuellement, non commité (section 12quater ci-dessus).
 - ✅ **Reversements** (`/dashboard/payouts` — lecture seule, résumé + historique par évènement, nouvel endpoint `GET .../payouts/overview`) — construit et vérifié visuellement, non commité (section 12quinquies ci-dessus).
-- ⬜ Paramètres du compte
+- ✅ **Paramètres du compte** (`/dashboard/settings` — profil organisation, numéro de reversement, changement de mot de passe, nouveau module backend `organizations`) — construit et vérifié visuellement, non commité (section 12sexies ci-dessus).
 - ⬜ Page détail évènement, panier/checkout, redirection paiement + confirmation, connexion/inscription (surfaces participant/public)
 - 🚫 **Repoussé** : page d'accueil (nouvelle maquette + backend mise en avant/sponsoring/géoloc manquants), pages Super Admin (bloquées sur le mini-module backend ci-dessus)
 

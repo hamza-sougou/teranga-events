@@ -1,9 +1,10 @@
 import { randomBytes } from 'crypto';
-import { ConflictException, Injectable, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { MemberRole, MemberStatus, Prisma, User } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../prisma/prisma.service';
+import { ChangePasswordDto } from './dto/change-password.dto';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 
@@ -107,7 +108,27 @@ export class AuthService {
       include: { organization: { select: { id: true, name: true, slug: true, isVerified: true } } },
     });
 
-    return { ...this.sanitizeUser(user), memberships };
+    return { ...this.sanitizeUser(user), hasPassword: !!user.passwordHash, memberships };
+  }
+
+  async changePassword(userId: string, dto: ChangePasswordDto) {
+    const user = await this.prisma.user.findUniqueOrThrow({ where: { id: userId } });
+
+    if (!user.passwordHash) {
+      throw new BadRequestException(
+        'This account uses Google Sign-In and has no password to change',
+      );
+    }
+
+    const currentPasswordMatches = await bcrypt.compare(dto.currentPassword, user.passwordHash);
+    if (!currentPasswordMatches) {
+      throw new UnauthorizedException('Current password is incorrect');
+    }
+
+    const passwordHash = await bcrypt.hash(dto.newPassword, 10);
+    await this.prisma.user.update({ where: { id: userId }, data: { passwordHash } });
+
+    return { success: true };
   }
 
   private async createOrganizerAccount(data: {

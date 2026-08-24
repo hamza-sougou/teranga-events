@@ -20,6 +20,19 @@ export interface Organization {
   isVerified: boolean;
 }
 
+// Full profile returned by GET /organizations/:id — a superset of the
+// Organization shape embedded in CurrentUser.memberships, which only carries
+// the fields /auth/me needs.
+export interface OrganizationProfile {
+  id: string;
+  name: string;
+  slug: string;
+  contactEmail: string | null;
+  contactPhone: string | null;
+  payoutPhoneNumber: string | null;
+  isVerified: boolean;
+}
+
 export interface Membership {
   id: string;
   organizationId: string;
@@ -34,6 +47,9 @@ export interface CurrentUser {
   fullName: string;
   isSuperAdmin: boolean;
   isActive: boolean;
+  // false for an account created via Google Sign-In that never set a
+  // password — the settings page uses this to hide the change-password form.
+  hasPassword: boolean;
   memberships: Membership[];
 }
 
