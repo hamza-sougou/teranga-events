@@ -1,5 +1,7 @@
+import { format } from 'date-fns';
+import { fr } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
-import type { EventStatus, OrderStatus, PayoutStatus, ScanResult } from '@/types';
+import type { EventStatus, MemberStatus, OrderStatus, PayoutStatus, ScanResult } from '@/types';
 
 type BadgeTone = 'positive' | 'pending' | 'neutral';
 
@@ -50,6 +52,37 @@ export function PayoutStatusBadge({ status }: { status: PayoutStatus }) {
   return <Badge label={label} tone={tone} />;
 }
 
+// Derived status for the read-only "Reversements" page — deliberately only
+// two tones (docs/DESIGN_SYSTEM.md §3), the sub-copy is what distinguishes
+// "not ended yet" from "ended but not yet processed" rather than a 3rd
+// color. PROCESSING/FAILED/no-row are all shown identically here: the
+// organizer can't act on any of them (job retries FAILED automatically),
+// so exposing that internal state would only read as alarming/confusing.
+export function PayoutOverviewStatusBadge({
+  payoutStatus,
+  eventEndAt,
+  triggeredAt,
+}: {
+  payoutStatus: PayoutStatus | null;
+  eventEndAt: string;
+  triggeredAt: string | null;
+}) {
+  if (payoutStatus === 'PAID') {
+    return (
+      <Badge
+        tone="positive"
+        label={`Versé${triggeredAt ? ` le ${format(new Date(triggeredAt), 'd MMM', { locale: fr })}` : ''}`}
+      />
+    );
+  }
+  if (new Date(eventEndAt) > new Date()) {
+    return (
+      <Badge tone="pending" label={`En attente — après le ${format(new Date(eventEndAt), 'd MMM', { locale: fr })}`} />
+    );
+  }
+  return <Badge tone="pending" label="En attente — traitement en cours" />;
+}
+
 const ORDER_STATUS: Record<OrderStatus, { label: string; tone: BadgeTone }> = {
   PAID: { label: 'Payée', tone: 'positive' },
   PENDING: { label: 'En attente', tone: 'pending' },
@@ -76,5 +109,16 @@ const SCAN_RESULT: Record<ScanResult, { label: string; tone: BadgeTone }> = {
 
 export function ScanResultBadge({ result }: { result: ScanResult }) {
   const { label, tone } = SCAN_RESULT[result];
+  return <Badge label={label} tone={tone} />;
+}
+
+const MEMBER_STATUS: Record<MemberStatus, { label: string; tone: BadgeTone }> = {
+  ACTIVE: { label: 'Actif', tone: 'positive' },
+  PENDING: { label: 'Invitation en attente', tone: 'pending' },
+  SUSPENDED: { label: 'Suspendu', tone: 'neutral' },
+};
+
+export function MemberStatusBadge({ status }: { status: MemberStatus }) {
+  const { label, tone } = MEMBER_STATUS[status];
   return <Badge label={label} tone={tone} />;
 }

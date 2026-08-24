@@ -17,4 +17,6 @@ export const queryKeys = {
   eventCategories: () => ['event-categories'],
   orders: (organizationId?: string, eventId?: string) => ['org-event-orders', organizationId, eventId],
   scans: (organizationId?: string, eventId?: string) => ['org-event-scans', organizationId, eventId],
+  teamMembers: (organizationId?: string) => ['org-team-members', organizationId],
+  payoutsOverview: (organizationId?: string) => ['org-payouts-overview', organizationId],
 };

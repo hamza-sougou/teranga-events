@@ -89,6 +89,20 @@ describe('Payouts — organizer reversement (e2e)', () => {
     return event;
   }
 
+  async function createUpcomingEvent(organizationId: string, userId: string) {
+    const unique = randomUUID();
+    const farFuture = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
+    const event = await eventsService.create(organizationId, userId, {
+      name: 'Festival À Venir',
+      slug: `festival-a-venir-${unique}`,
+      startAt: farFuture.toISOString(),
+      endAt: new Date(farFuture.getTime() + 5 * 60 * 60 * 1000).toISOString(),
+    });
+    await seedImage(event.id);
+    await eventsService.update(organizationId, event.id, { status: EventStatus.PUBLISHED });
+    return event;
+  }
+
   // Publishing now requires at least one image (events.e2e-spec.ts covers the
   // rule itself) — seed one directly, this file isn't testing that rule.
   function seedImage(eventId: string) {
@@ -233,5 +247,76 @@ describe('Payouts — organizer reversement (e2e)', () => {
     expect(res.body).toHaveLength(1);
     expect(res.body[0].status).toBe('PAID');
     expect(res.body[0].event).toMatchObject({ id: event.id, name: 'Festival Terminé' });
+  });
+
+  describe('GET /organizations/:organizationId/payouts/overview', () => {
+    it('includes an event with a paid order that has not ended yet, live-computed and unprocessed', async () => {
+      const { accessToken, organizationId, userId } = await registerOrganizer();
+      const event = await createUpcomingEvent(organizationId, userId);
+      await createPaidOrder(event.id, 1500);
+
+      const res = await request(app.getHttpServer())
+        .get(`/organizations/${organizationId}/payouts/overview`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(200);
+
+      expect(res.body).toHaveLength(1);
+      expect(res.body[0]).toMatchObject({
+        eventId: event.id,
+        eventName: 'Festival À Venir',
+        amountDue: 1500,
+        payoutStatus: null,
+        amountPaid: null,
+        triggeredAt: null,
+      });
+    });
+
+    it('includes an ended event not yet picked up by the payout job, live-computed', async () => {
+      const { accessToken, organizationId, userId } = await registerOrganizer();
+      const event = await createEndedEvent(organizationId, userId, 'PUBLISHED');
+      await createPaidOrder(event.id, 2500);
+
+      const res = await request(app.getHttpServer())
+        .get(`/organizations/${organizationId}/payouts/overview`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(200);
+
+      expect(res.body).toHaveLength(1);
+      expect(res.body[0]).toMatchObject({ eventId: event.id, amountDue: 2500, payoutStatus: null });
+    });
+
+    it('reflects a PAID payout row once the job has run', async () => {
+      const { accessToken, organizationId, userId } = await registerOrganizer();
+      await prisma.organization.update({ where: { id: organizationId }, data: { payoutPhoneNumber: '221771234567' } });
+      const event = await createEndedEvent(organizationId, userId, 'PUBLISHED');
+      await createPaidOrder(event.id, 1000);
+      jest.spyOn(paydunyaProvider, 'disburse').mockResolvedValue({ transactionId: 'txn-overview', responseText: 'ok' });
+      await payoutsService.runPayoutForEvent(event.id);
+
+      const res = await request(app.getHttpServer())
+        .get(`/organizations/${organizationId}/payouts/overview`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(200);
+
+      expect(res.body).toHaveLength(1);
+      expect(res.body[0]).toMatchObject({ eventId: event.id, amountDue: 1000, amountPaid: 1000, payoutStatus: 'PAID' });
+      expect(res.body[0].triggeredAt).not.toBeNull();
+    });
+
+    it('excludes events with no paid order and never leaks another organization\'s events', async () => {
+      const { accessToken, organizationId, userId } = await registerOrganizer();
+      await createUpcomingEvent(organizationId, userId);
+
+      const other = await registerOrganizer();
+      const otherEvent = await createEndedEvent(other.organizationId, other.userId, 'PUBLISHED');
+      await createPaidOrder(otherEvent.id, 999);
+
+      const res = await request(app.getHttpServer())
+        .get(`/organizations/${organizationId}/payouts/overview`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(200);
+
+      expect(res.body).toHaveLength(0);
+    });
   });
 });

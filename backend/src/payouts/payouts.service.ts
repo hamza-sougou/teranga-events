@@ -128,4 +128,40 @@ export class PayoutsService {
       include: { event: { select: { id: true, name: true } } },
     });
   }
+
+  // Read-only overview for the organizer-facing "Reversements" page — one row
+  // per event with >=1 paid order, including events with no `payouts` row yet
+  // (not ended, or ended but not yet picked up by the nightly job). Additive:
+  // findAllForOrganization above stays untouched, it already backs the
+  // dashboard's payouts panel with a different response shape.
+  async getOverviewForOrganization(organizationId: string) {
+    const events = await this.prisma.event.findMany({
+      where: { organizationId, orders: { some: { status: OrderStatus.PAID } } },
+      select: { id: true, name: true, endAt: true, payout: true },
+      orderBy: { endAt: 'desc' },
+    });
+    if (events.length === 0) return [];
+
+    const eventsWithoutPayout = events.filter((event) => !event.payout).map((event) => event.id);
+    const liveDue = eventsWithoutPayout.length
+      ? await this.prisma.order.groupBy({
+          by: ['eventId'],
+          where: { eventId: { in: eventsWithoutPayout }, status: OrderStatus.PAID },
+          _sum: { subtotalAmount: true },
+        })
+      : [];
+    const liveDueMap = new Map(liveDue.map((row) => [row.eventId, Number(row._sum.subtotalAmount ?? 0)]));
+
+    return events.map((event) => ({
+      eventId: event.id,
+      eventName: event.name,
+      eventEndAt: event.endAt,
+      amountDue: event.payout ? Number(event.payout.amountDue) : (liveDueMap.get(event.id) ?? 0),
+      payoutStatus: event.payout?.status ?? null,
+      amountPaid: event.payout?.amountPaid !== undefined && event.payout?.amountPaid !== null
+        ? Number(event.payout.amountPaid)
+        : null,
+      triggeredAt: event.payout?.triggeredAt ?? null,
+    }));
+  }
 }

@@ -17,4 +17,10 @@ export class PayoutsController {
   findAllForOrganization(@Param('organizationId') organizationId: string) {
     return this.payoutsService.findAllForOrganization(organizationId);
   }
+
+  @Get('overview')
+  @OrgRoles(...VIEW_ROLES)
+  getOverview(@Param('organizationId') organizationId: string) {
+    return this.payoutsService.getOverviewForOrganization(organizationId);
+  }
 }

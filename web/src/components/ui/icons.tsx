@@ -14,6 +14,8 @@ import video from '@iconify-icons/lucide/video';
 import uploadCloud from '@iconify-icons/lucide/upload-cloud';
 import search from '@iconify-icons/lucide/search';
 import download from '@iconify-icons/lucide/download';
+import moreVertical from '@iconify-icons/lucide/more-vertical';
+import userPlus from '@iconify-icons/lucide/user-plus';
 
 type IconProps = { className?: string };
 
@@ -63,4 +65,12 @@ export function SearchIcon({ className }: IconProps) {
 
 export function DownloadIcon({ className }: IconProps) {
   return <Icon icon={download} className={className} />;
+}
+
+export function MoreVerticalIcon({ className }: IconProps) {
+  return <Icon icon={moreVertical} className={className} />;
+}
+
+export function UserPlusIcon({ className }: IconProps) {
+  return <Icon icon={userPlus} className={className} />;
 }
