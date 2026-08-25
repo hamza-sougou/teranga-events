@@ -77,18 +77,52 @@ describe('NominatimGeocodingProvider', () => {
     expect(result.city).toBe('');
   });
 
-  it('falls back road to display_name when road is absent', async () => {
+  it('returns an empty district rather than falling back to display_name when no neighbourhood field is present', async () => {
     fetchSpy.mockResolvedValue(
       jsonResponse([
         rawResult({
-          display_name: 'Quelque part, Sénégal',
-          address: { country: 'Sénégal', city: 'Dakar' },
+          display_name: 'Plage de la Voile d\'Or, Commune de Hann Bel-Air, Arrondissement de Grand Dakar, Dakar, Région de Dakar, Sénégal',
+          address: { country: 'Sénégal', city: 'Dakar', road: undefined },
         }),
       ]),
     );
 
     const [result] = await provider.searchPlaces('query');
-    expect(result.road).toBe('Quelque part, Sénégal');
+    expect(result.district).toBe('');
+  });
+
+  it.each([
+    ['suburb', { suburb: 'Commune de Hann Bel-Air' }, 'Hann Bel-Air'],
+    ['city_district', { city_district: "Arrondissement d'Almadies" }, 'Almadies'],
+    ['neighbourhood', { neighbourhood: 'Sacré-Coeur 3' }, 'Sacré-Coeur 3'],
+    ['quarter', { quarter: 'Point E' }, 'Point E'],
+  ])('derives district from %s, stripping French admin prefixes', async (_label, addressOverrides, expected) => {
+    fetchSpy.mockResolvedValue(
+      jsonResponse([rawResult({ address: { country: 'Sénégal', city: 'Dakar', ...addressOverrides } })]),
+    );
+
+    const [result] = await provider.searchPlaces('query');
+    expect(result.district).toBe(expected);
+  });
+
+  it('prioritizes suburb over city_district/neighbourhood/quarter when several are present', async () => {
+    fetchSpy.mockResolvedValue(
+      jsonResponse([
+        rawResult({
+          address: {
+            country: 'Sénégal',
+            city: 'Dakar',
+            suburb: 'Commune de Hann Bel-Air',
+            city_district: 'Grand Dakar',
+            neighbourhood: 'Other',
+            quarter: 'Other',
+          },
+        }),
+      ]),
+    );
+
+    const [result] = await provider.searchPlaces('query');
+    expect(result.district).toBe('Hann Bel-Air');
   });
 
   it('parses lat/lon strings into numbers', async () => {

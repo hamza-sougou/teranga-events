@@ -16,7 +16,7 @@
   --indigo: #5533e0;
   --amber: #ffb627;
   --emerald: #0fbf8f;
-  --border: rgba(23, 18, 31, 0.12);
+  --border: rgba(23, 18, 31, 0.02);
   --radius: 6px;
 
   /* Status badge soft backgrounds — literal values from the validated

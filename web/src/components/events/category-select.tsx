@@ -3,34 +3,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Icon } from '@iconify/react/offline';
-import music from '@iconify-icons/lucide/music';
-import sparkles from '@iconify-icons/lucide/sparkles';
-import moon from '@iconify-icons/lucide/moon';
-import award from '@iconify-icons/lucide/award';
-import drama from '@iconify-icons/lucide/drama';
-import presentation from '@iconify-icons/lucide/presentation';
-import trophy from '@iconify-icons/lucide/trophy';
-import shapes from '@iconify-icons/lucide/shapes';
 import chevronDown from '@iconify-icons/lucide/chevron-down';
 import { apiClient } from '@/lib/api-client';
 import { queryKeys } from '@/lib/query-keys';
 import { cn } from '@/lib/utils';
+import { CATEGORY_ICONS } from '@/lib/category-icons';
 import type { EventCategory } from '@/types';
-
-// Keyed by the `icon` string each event_categories row carries from the API
-// (db/schema.sql §3B) — one static map, not a per-call-site import, since
-// Iconify icons can't be pulled in via a dynamic path (docs/DESIGN_SYSTEM.md
-// "Icônes").
-const CATEGORY_ICONS: Record<string, typeof music> = {
-  music,
-  sparkles,
-  moon,
-  award,
-  drama,
-  presentation,
-  trophy,
-  shapes,
-};
 
 interface CategorySelectProps {
   id?: string;

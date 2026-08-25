@@ -101,7 +101,7 @@ Chaque page = une session Claude Code dédiée, en plan mode, validée avant de 
 6. Paramètres du compte
 
 ### Participant / public (hors page d'accueil)
-7. Page détail évènement — backend prêt (`events`/`ticket-types` publics)
+7. ✅ **Page détail évènement** *(construite et vérifiée visuellement, non commitée)* (hero image + chrono, sidesheet de sélection de billets, prix commission incluse, section Adresse + carte, section "Organisé par" en aperçu — voir `PROGRESS.md` §12septies/12octies) — backend prêt (`events`/`ticket-types` publics)
 8. Panier / checkout — backend prêt (`orders/preview`, `orders`)
 9. Redirection paiement PayDunya + page de confirmation — backend prêt, webhook déjà vérifié en conditions réelles (paiement sandbox réel via ngrok)
 10. Connexion / inscription (email + Google) — backend prêt (`auth`)

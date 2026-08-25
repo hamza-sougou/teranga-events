@@ -264,5 +264,56 @@ describe('TicketTypes (e2e)', () => {
       expect(res.body[0].quantityTotal).toBeUndefined();
       expect(res.body[0].quantitySold).toBeUndefined();
     });
+
+    it('returns a displayPrice above the raw organizer price (commission included)', async () => {
+      const { accessToken, organizationId, userId } = await registerOrganizer();
+      const event = await createEvent(organizationId, userId);
+      await request(app.getHttpServer())
+        .post(`/organizations/${organizationId}/events/${event.id}/ticket-types`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ ...ticketTypePayload(), saleStart: '2020-01-01T00:00:00.000Z', saleEnd: '2030-01-01T00:00:00.000Z' })
+        .expect(201);
+      await seedImage(event.id);
+      await request(app.getHttpServer())
+        .patch(`/organizations/${organizationId}/events/${event.id}`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ status: 'PUBLISHED' })
+        .expect(200);
+
+      const res = await request(app.getHttpServer()).get(`/events/${event.slug}/ticket-types`).expect(200);
+      expect(Number(res.body[0].price)).toBe(5000);
+      expect(res.body[0].displayPrice).toBeGreaterThan(5000);
+    });
+
+    it('excludes presale_whitelist ticket types — no visitor identity to check on this anonymous page', async () => {
+      const { accessToken, organizationId, userId } = await registerOrganizer();
+      const event = await createEvent(organizationId, userId);
+      await request(app.getHttpServer())
+        .post(`/organizations/${organizationId}/events/${event.id}/ticket-types`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({
+          ...ticketTypePayload(),
+          name: 'Whitelist',
+          accessMode: 'PRESALE_WHITELIST',
+          saleStart: '2020-01-01T00:00:00.000Z',
+          saleEnd: '2030-01-01T00:00:00.000Z',
+        })
+        .expect(201);
+      await request(app.getHttpServer())
+        .post(`/organizations/${organizationId}/events/${event.id}/ticket-types`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ ...ticketTypePayload(), name: 'Public', saleStart: '2020-01-01T00:00:00.000Z', saleEnd: '2030-01-01T00:00:00.000Z' })
+        .expect(201);
+      await seedImage(event.id);
+      await request(app.getHttpServer())
+        .patch(`/organizations/${organizationId}/events/${event.id}`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ status: 'PUBLISHED' })
+        .expect(200);
+
+      const res = await request(app.getHttpServer()).get(`/events/${event.slug}/ticket-types`).expect(200);
+      expect(res.body).toHaveLength(1);
+      expect(res.body[0].name).toBe('Public');
+    });
   });
 });

@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { Avatar } from '@/components/ui/avatar';
+import { Wordmark } from '@/components/ui/wordmark';
 import {
   EventsIcon,
   GridIcon,
@@ -62,9 +63,7 @@ export function Sidebar({ organizationName, roleLabel }: { organizationName: str
 
   return (
     <aside className="hidden flex-col bg-ink px-5 py-[26px] lg:flex">
-      <div className="mb-10 text-[17px] font-black text-on-dark">
-        zen<span className="text-indigo">events</span>
-      </div>
+      <Wordmark className="mb-10 text-on-dark" />
 
       <NavGroup label="Général" items={GENERAL_ITEMS} pathname={pathname} />
       <NavGroup label="Gestion" items={MANAGEMENT_ITEMS} pathname={pathname} />

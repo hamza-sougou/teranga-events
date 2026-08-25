@@ -20,10 +20,13 @@ export function Avatar({
   return (
     <div
       className={cn(
-        'flex shrink-0 items-center justify-center rounded-full text-[11px] font-extrabold',
+        'flex shrink-0 items-center justify-center rounded-full font-extrabold',
         tone === 'indigo' ? 'bg-indigo text-white' : 'bg-ink-2 text-on-dark',
       )}
-      style={{ width: size, height: size }}
+      // Scales with size (11px at the default 30px, tuned to match every
+      // existing call site) rather than a fixed text-[11px] that would look
+      // tiny in a larger avatar like the participant page's organizer panel.
+      style={{ width: size, height: size, fontSize: Math.round(size * 0.367) }}
     >
       {initialsOf(name)}
     </div>

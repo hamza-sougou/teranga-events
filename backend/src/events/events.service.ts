@@ -43,6 +43,13 @@ const PUBLIC_EVENT_SELECT = {
     select: { id: true, type: true, url: true },
     orderBy: { createdAt: 'asc' },
   },
+  // Organizer name for the "Organisé par" section — nothing else about the
+  // organizer (avatar/followers/verification) exists as real data yet, the
+  // frontend fills the rest with placeholders until a real profile module
+  // exists.
+  organization: {
+    select: { name: true },
+  },
 } satisfies Prisma.EventSelect;
 
 @Injectable()

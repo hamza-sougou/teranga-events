@@ -85,7 +85,7 @@ export function EventLocationPicker({
       venueName: query,
       country: place.country,
       city: place.city,
-      address: place.road,
+      address: place.district,
       latitude: place.latitude,
       longitude: place.longitude,
     });

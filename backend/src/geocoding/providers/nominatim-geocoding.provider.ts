@@ -9,7 +9,13 @@ export interface NormalizedPlace {
   displayName: string;
   country: string;
   city: string;
-  road: string;
+  // Neighbourhood/district — written into Event.address (labeled "Quartier"
+  // in the organizer form), never a street. Deliberately never falls back to
+  // the full display_name (see normalize() below) — that produced the
+  // "Voile d'or, Plage de la Voile d'Or, Commune de Hann Bel-Air,
+  // Arrondissement de Grand Dakar, Dakar, Région de Dakar, Sénégal, Dakar,
+  // Sénégal"-style unusably long address the participant page used to show.
+  district: string;
   latitude: number;
   longitude: number;
 }
@@ -27,7 +33,21 @@ interface NominatimAddress {
   town?: string;
   village?: string;
   suburb?: string;
+  city_district?: string;
+  neighbourhood?: string;
+  quarter?: string;
   road?: string;
+}
+
+// Dakar-area communes/arrondissements come back from Nominatim with these
+// French administrative prefixes baked into the field value itself (e.g.
+// "Commune de Hann Bel-Air") — stripped for a plain neighbourhood name.
+// Heuristic scoped to Senegal, consistent with the countrycodes=sn search
+// param above; not guaranteed to cover every naming convention.
+const ADMIN_PREFIX_PATTERN = /^(commune|arrondissement)\s+(de|d'|du|des)\s*/i;
+
+function stripAdminPrefix(value: string): string {
+  return value.replace(ADMIN_PREFIX_PATTERN, '').trim();
 }
 
 interface NominatimResult {
@@ -127,13 +147,14 @@ export class NominatimGeocodingProvider implements GeocodingProvider {
 
   private normalize(raw: NominatimResult): NormalizedPlace {
     const address = raw.address ?? {};
+    const district = address.suburb ?? address.city_district ?? address.neighbourhood ?? address.quarter ?? '';
     return {
       placeId: raw.place_id,
       name: raw.name?.trim() || raw.display_name.split(',')[0].trim(),
       displayName: raw.display_name,
       country: address.country ?? '',
       city: address.city ?? address.town ?? address.village ?? address.suburb ?? '',
-      road: address.road ?? raw.display_name,
+      district: district ? stripAdminPrefix(district) : '',
       latitude: parseFloat(raw.lat),
       longitude: parseFloat(raw.lon),
     };

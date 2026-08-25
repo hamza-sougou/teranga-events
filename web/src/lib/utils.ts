@@ -16,6 +16,10 @@ export function slugify(input: string): string {
     .replace(/^-+|-+$/g, '');
 }
 
+export function formatXof(amount: number): string {
+  return `${new Intl.NumberFormat('fr-FR').format(Math.round(amount))} FCFA`;
+}
+
 // For pre-filling <input type="datetime-local"> from a fetched ISO string —
 // that input needs local wall-clock time with no timezone/seconds suffix.
 export function toDatetimeLocalValue(iso: string): string {

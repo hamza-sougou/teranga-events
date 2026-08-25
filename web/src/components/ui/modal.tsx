@@ -1,8 +1,8 @@
 'use client';
 
-import { useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { XCloseIcon } from '@/components/ui/icons';
+import { useOverlayBehavior } from '@/hooks/use-overlay-behavior';
 
 interface ModalProps {
   open: boolean;
@@ -12,14 +12,7 @@ interface ModalProps {
 }
 
 export function Modal({ open, onClose, title, children }: ModalProps) {
-  useEffect(() => {
-    if (!open) return;
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [open, onClose]);
+  useOverlayBehavior(open, onClose);
 
   if (!open || typeof document === 'undefined') return null;
 

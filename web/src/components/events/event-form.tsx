@@ -205,7 +205,7 @@ export function EventForm({ mode, defaultValues, disabled, submitLabel, submitti
         </FormField>
       </div>
 
-      <FormField label="Adresse" htmlFor="address">
+      <FormField label="Quartier" htmlFor="address">
         <Input id="address" disabled={disabled} {...register('address')} />
       </FormField>
 

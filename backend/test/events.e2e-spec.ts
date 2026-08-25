@@ -414,6 +414,9 @@ describe('Events (e2e)', () => {
       expect(res.body.slug).toBe(payload.slug);
       expect(res.body.organizationId).toBeUndefined();
       expect(res.body.createdBy).toBeUndefined();
+      // "Organisé par" on the participant page needs the organizer's name —
+      // nothing else about the organization (id, verification, etc.) leaks.
+      expect(res.body.organization).toEqual({ name: 'Amadou Events' });
     });
   });
 

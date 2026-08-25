@@ -112,7 +112,9 @@ export interface NormalizedPlace {
   displayName: string;
   country: string;
   city: string;
-  road: string;
+  // Neighbourhood/district, never a street — see the backend provider for
+  // why (french admin prefixes stripped, never falls back to display_name).
+  district: string;
   latitude: number;
   longitude: number;
 }
@@ -144,6 +146,54 @@ export interface TicketType {
   saleStart: string;
   saleEnd: string;
   createdAt: string;
+}
+
+// GET /events/:slug (PUBLIC_EVENT_SELECT) — a narrower shape than the
+// organizer's Event: no organizationId/status/createdBy, media is always
+// present (not conditional on a "detail" endpoint like the organizer one).
+export interface PublicEvent {
+  id: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  venueName: string | null;
+  address: string | null;
+  country: string | null;
+  city: string | null;
+  latitude: string | null;
+  longitude: string | null;
+  category: EventCategory | null;
+  minAge: number | null;
+  dressCodes: EventDressCode[];
+  startAt: string;
+  endAt: string;
+  media: EventMedia[];
+  // Just the name — no real organizer profile (avatar/followers/verified
+  // status) exists yet, see components/public/organizer-panel.tsx.
+  organization: { name: string };
+}
+
+// GET /events/:slug/ticket-types — a deliberately narrower projection than
+// the organizer's TicketType (no quantityTotal/quantitySold, see
+// backend/src/ticket-types/ticket-types.service.ts#findPublicForEvent).
+// presale_whitelist types never appear here — this page has no visitor
+// identity to check a whitelist against.
+export interface PublicTicketType {
+  id: string;
+  name: string;
+  category: TicketCategory;
+  price: string;
+  // Commission-included price the buyer actually pays, computed on the
+  // mobile money reference channel — see docs/SPEC.md §5.5. A plain number
+  // (not a Decimal-as-string) since the backend computes it, not Prisma.
+  displayPrice: number;
+  currency: string;
+  maxPerOrder: number;
+  accessMode: TicketAccessMode;
+  saleStart: string;
+  saleEnd: string;
+  available: number;
+  isOnSale: boolean;
 }
 
 export interface TicketTypeWhitelist {

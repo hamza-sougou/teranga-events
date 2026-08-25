@@ -1,7 +1,9 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { Prisma, TicketAccessMode } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { EventsService } from '../events/events.service';
+import { PricingService } from '../payments/pricing/pricing.service';
+import { PaymentChannel } from '../payments/pricing/payment-channel';
 import { CreateTicketTypeDto } from './dto/create-ticket-type.dto';
 import { UpdateTicketTypeDto } from './dto/update-ticket-type.dto';
 import { AddWhitelistEntriesDto } from './dto/add-whitelist-entries.dto';
@@ -11,6 +13,7 @@ export class TicketTypesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly eventsService: EventsService,
+    private readonly pricingService: PricingService,
   ) {}
 
   async create(organizationId: string, eventId: string, dto: CreateTicketTypeDto) {
@@ -111,10 +114,14 @@ export class TicketTypesService {
     }
   }
 
+  // Anonymous participant page (no visitor identity until checkout, not
+  // built yet) — a presale_whitelist ticket type can't be resolved as
+  // "accessible to this visitor" with nobody's email to check against, so it
+  // never appears here at all rather than showing as purchasable to everyone.
   async findPublicForEvent(slug: string) {
     const event = await this.eventsService.findPublicBySlug(slug);
     const ticketTypes = await this.prisma.ticketType.findMany({
-      where: { eventId: event.id },
+      where: { eventId: event.id, accessMode: { not: TicketAccessMode.PRESALE_WHITELIST } },
       orderBy: { createdAt: 'asc' },
     });
 
@@ -124,6 +131,12 @@ export class TicketTypesService {
       name: ticketType.name,
       category: ticketType.category,
       price: ticketType.price,
+      // Commission-included price the buyer actually pays (docs/SPEC.md §5.5),
+      // computed on the mobile money channel as the display reference — the
+      // cheapest and most common channel in Senegal; the exact total is
+      // confirmed per-channel at checkout (not built yet).
+      displayPrice: this.pricingService.quoteCheckout(Number(ticketType.price), PaymentChannel.MOBILE_MONEY)
+        .totalAmount,
       currency: ticketType.currency,
       maxPerOrder: ticketType.maxPerOrder,
       accessMode: ticketType.accessMode,

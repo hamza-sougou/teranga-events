@@ -20,4 +20,6 @@ export const queryKeys = {
   teamMembers: (organizationId?: string) => ['org-team-members', organizationId],
   payoutsOverview: (organizationId?: string) => ['org-payouts-overview', organizationId],
   orgProfile: (organizationId?: string) => ['org-profile', organizationId],
+  publicEvent: (slug?: string) => ['public-event', slug],
+  publicTicketTypes: (slug?: string) => ['public-ticket-types', slug],
 };

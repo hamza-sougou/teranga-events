@@ -21,7 +21,7 @@ describe('Geocoding (e2e)', () => {
       displayName: 'Terrou-Bi, Route de la Corniche Ouest, Dakar, Sénégal',
       country: 'Sénégal',
       city: 'Dakar',
-      road: 'Route de la Corniche Ouest',
+      district: 'Fann Résidence',
       latitude: 14.6872,
       longitude: -17.4781,
     },

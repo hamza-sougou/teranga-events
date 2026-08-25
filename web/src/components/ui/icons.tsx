@@ -16,6 +16,14 @@ import search from '@iconify-icons/lucide/search';
 import download from '@iconify-icons/lucide/download';
 import moreVertical from '@iconify-icons/lucide/more-vertical';
 import userPlus from '@iconify-icons/lucide/user-plus';
+import share2 from '@iconify-icons/lucide/share-2';
+import mapPin from '@iconify-icons/lucide/map-pin';
+import minus from '@iconify-icons/lucide/minus';
+import shirt from '@iconify-icons/lucide/shirt';
+import userCheck from '@iconify-icons/lucide/user-check';
+import ticket from '@iconify-icons/lucide/ticket';
+import badgeCheck from '@iconify-icons/lucide/badge-check';
+import menu from '@iconify-icons/lucide/menu';
 
 type IconProps = { className?: string };
 
@@ -73,4 +81,36 @@ export function MoreVerticalIcon({ className }: IconProps) {
 
 export function UserPlusIcon({ className }: IconProps) {
   return <Icon icon={userPlus} className={className} />;
+}
+
+export function ShareIcon({ className }: IconProps) {
+  return <Icon icon={share2} className={className} />;
+}
+
+export function MapPinIcon({ className }: IconProps) {
+  return <Icon icon={mapPin} className={className} />;
+}
+
+export function MinusIcon({ className }: IconProps) {
+  return <Icon icon={minus} className={className} />;
+}
+
+export function ShirtIcon({ className }: IconProps) {
+  return <Icon icon={shirt} className={className} />;
+}
+
+export function UserCheckIcon({ className }: IconProps) {
+  return <Icon icon={userCheck} className={className} />;
+}
+
+export function TicketIcon({ className }: IconProps) {
+  return <Icon icon={ticket} className={className} />;
+}
+
+export function BadgeCheckIcon({ className }: IconProps) {
+  return <Icon icon={badgeCheck} className={className} />;
+}
+
+export function MenuIcon({ className }: IconProps) {
+  return <Icon icon={menu} className={className} />;
 }
