@@ -7,7 +7,7 @@ Ce document est la référence unique pour l'identité visuelle du frontend web 
 ## 1. Maquettes de référence
 
 - `design/mockups/zen-events-dashboard-mockup.html` — présente, validée. Référence visuelle exacte pour le tableau de bord organisateur (couleurs, typographie, densité, comportement du survol). Fichier HTML/CSS statique, pas du code Next.js — pas à copier tel quel dans les composants React.
-- Maquette homepage — **volontairement absente**, ce n'est pas un oubli. Le design testé ne convenait pas, et la vraie page aura de toute façon besoin de sections qui n'existent pas encore côté backend ("Se déroulant cette semaine", "évènements sponsorisés", "près de toi" — pas d'endpoint de mise en avant/sponsoring ni de recherche géographique aujourd'hui). Repoussée jusqu'à ce qu'une nouvelle maquette ET le backend correspondant existent tous les deux — voir section 5.
+- Maquette homepage — toujours **absente** (le design testé ne convenait pas, jamais remplacé), mais la page a été construite directement à partir des tokens de ce document plutôt que d'attendre une maquette dédiée (même décision que la page Création/édition d'évènement en son temps) — voir `PROGRESS.md` §15 et section 5 ci-dessous.
 
 ---
 
@@ -74,6 +74,9 @@ Ne jamais faire une page entièrement dans un seul fond. Alterner clair (`--bg`)
 ### Le "billet vivant"
 Anneaux de pulsation (`@keyframes pulse`) autour d'un ticket stylisé, avec légende "Code actualisé il y a X secondes" et point clignotant émeraude. Réservé aux contextes de confiance/marketing (hero, écran de visualisation du billet) — c'est l'écho visuel de la fonctionnalité de code rotatif documentée dans `docs/SPEC.md §9` (pas encore fonctionnelle côté backend, mais le motif visuel peut exister avant, à condition que ce soit clair que ce n'est pas encore branché à une vraie sécurité tant que la section 9 n'est pas implémentée).
 
+### Exception ponctuelle — badge "eyebrow" du hero d'accueil
+Le hero de la page d'accueil (`web/src/components/public/home-hero.tsx`) porte un badge pilule sombre (texte clair, majuscules) au-dessus du H1, **pas** le kicker standard (trait + titre) décrit plus haut. Traitement volontairement différent et ponctuel, propre à ce hero précis — pas un second motif signature à généraliser ailleurs. C'est aussi la seule dérogation actée à la règle "pas de formes en pilule sauf avatars/points ronds intentionnels" du §2 : justifiée ici par le même raisonnement (élément d'accroche isolé, pas un composant répété).
+
 ---
 
 ## 4. Exigences de qualité de code
@@ -100,12 +103,12 @@ Chaque page = une session Claude Code dédiée, en plan mode, validée avant de 
 5. Reversements (détail, historique) — backend prêt (`payouts`)
 6. Paramètres du compte
 
-### Participant / public (hors page d'accueil)
+### Participant / public
 7. ✅ **Page détail évènement** *(construite et vérifiée visuellement, non commitée)* (hero image + chrono, sidesheet de sélection de billets, prix commission incluse, section Adresse + carte, section "Organisé par" en aperçu — voir `PROGRESS.md` §12septies/12octies) — backend prêt (`events`/`ticket-types` publics)
-8. Panier / checkout — backend prêt (`orders/preview`, `orders`)
-9. Redirection paiement PayDunya + page de confirmation — backend prêt, webhook déjà vérifié en conditions réelles (paiement sandbox réel via ngrok)
-10. Connexion / inscription (email + Google) — backend prêt (`auth`)
+8. ✅ **Page d'accueil** *(construite et vérifiée visuellement, non commitée)* (route `/`, groupe `(public)` — hero dégradé indigo→ink + recherche + tendance, 8 sections de découverte, grille catégories, bande "Devenez organisateur", footer — voir `PROGRESS.md` §15) — backend prêt (`/discover/*`, `docs/SPEC.md §9`)
+9. Panier / checkout — backend prêt (`orders/preview`, `orders`)
+10. Redirection paiement PayDunya + page de confirmation — backend prêt, webhook déjà vérifié en conditions réelles (paiement sandbox réel via ngrok)
+11. Connexion / inscription (email + Google) — backend prêt (`auth`)
 
 ### Repoussé — dépendances non résolues, ne pas démarrer avant qu'elles le soient
-- **Page d'accueil / découverte** — bloquée sur deux fronts : nouvelle maquette à fournir (le design testé ne convient pas), et nouveau backend pour "Se déroulant cette semaine" / "évènements sponsorisés" / "près de toi" (mise en avant, sponsoring, recherche géographique — rien de tout ça n'existe aujourd'hui).
 - **Super Admin (tableau de bord plateforme, validation/modération des organisateurs, finances plateforme)** — bloqué côté backend : le seul endpoint protégé par `SuperAdminGuard` aujourd'hui déclenche manuellement un reversement, rien d'autre. Aucune route pour faire basculer `organizations.is_verified`, aucune agrégation "finances plateforme". À traiter comme un mini-module backend à part avant de commencer ces pages.

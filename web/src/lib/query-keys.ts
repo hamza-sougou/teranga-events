@@ -22,4 +22,11 @@ export const queryKeys = {
   orgProfile: (organizationId?: string) => ['org-profile', organizationId],
   publicEvent: (slug?: string) => ['public-event', slug],
   publicTicketTypes: (slug?: string) => ['public-ticket-types', slug],
+  discoverTrending: () => ['discover-trending'],
+  discoverThisWeekend: () => ['discover-this-weekend'],
+  discoverNearMe: (lat?: number, lng?: number) => ['discover-near-me', lat, lng],
+  discoverSponsored: () => ['discover-sponsored'],
+  discoverRecentlyPublished: () => ['discover-recently-published'],
+  discoverLastChance: () => ['discover-last-chance'],
+  discoverFree: () => ['discover-free'],
 };

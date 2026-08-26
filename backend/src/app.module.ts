@@ -26,6 +26,7 @@ import { StatsModule } from './stats/stats.module';
 import { StorageModule } from './storage/storage.module';
 import { EventMediaModule } from './event-media/event-media.module';
 import { GeocodingModule } from './geocoding/geocoding.module';
+import { DiscoveryModule } from './discovery/discovery.module';
 
 const isTestEnv = process.env.NODE_ENV === 'test';
 
@@ -60,6 +61,7 @@ const isTestEnv = process.env.NODE_ENV === 'test';
     StorageModule,
     EventMediaModule,
     GeocodingModule,
+    DiscoveryModule,
   ],
   providers: isTestEnv ? [] : [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })

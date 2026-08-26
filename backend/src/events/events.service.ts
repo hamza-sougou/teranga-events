@@ -156,6 +156,11 @@ export class EventsService {
       }
     }
 
+    // Set only on the DRAFT -> PUBLISHED transition itself, never touched
+    // again afterwards (e.g. PUBLISHED -> COMPLETED must not overwrite it) —
+    // see docs/SPEC.md §9.3.
+    const isPublishing = dto.status === EventStatus.PUBLISHED && event.status !== EventStatus.PUBLISHED;
+
     let updated;
     try {
       updated = await this.prisma.$transaction(async (tx) => {
@@ -176,6 +181,7 @@ export class EventsService {
             startAt: dto.startAt ? new Date(dto.startAt) : undefined,
             endAt: dto.endAt ? new Date(dto.endAt) : undefined,
             status: dto.status,
+            publishedAt: isPublishing ? new Date() : undefined,
           },
         });
 

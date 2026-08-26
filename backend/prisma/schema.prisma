@@ -7,7 +7,8 @@
 //     valid_until > valid_from, max_uses IS NULL OR uses_count <= max_uses,
 //     chk_users_auth_method: password_hash IS NOT NULL OR google_id IS NOT NULL,
 //     chk_orders_total_equals_parts: total_amount = subtotal_amount + service_fee_amount,
-//     subtotal_amount/service_fee_amount/amount_due >= 0)
+//     subtotal_amount/service_fee_amount/amount_due >= 0,
+//     event_promotions: ends_at > starts_at)
 //   - the case-insensitive unique index on lower(users.email) (idx_users_email_lower)
 //   - the two capacity triggers: fn_reserve_ticket_capacity (BEFORE INSERT ON
 //     tickets) and fn_release_ticket_capacity (AFTER UPDATE OF status ON tickets)
@@ -194,6 +195,13 @@ enum DressCodeAudience {
   @@map("dress_code_audience")
 }
 
+enum PromotionType {
+  FEATURED  @map("featured")
+  SPONSORED @map("sponsored")
+
+  @@map("promotion_type")
+}
+
 // ============================================================
 // 2. UTILISATEURS
 // ============================================================
@@ -214,6 +222,7 @@ model User {
   memberships        OrganizationMember[] @relation("MemberUser")
   invitedMemberships OrganizationMember[] @relation("MemberInviter")
   createdEvents      Event[]              @relation("EventCreator")
+  createdEventPromotions EventPromotion[] @relation("EventPromotionCreator")
   ordersAsBuyer      Order[]              @relation("OrderBuyer")
   ordersAsSeller     Order[]              @relation("OrderSeller")
   scans              Scan[]               @relation("ScanController")
@@ -325,16 +334,21 @@ model Event {
   createdBy      String      @map("created_by") @db.Uuid
   createdAt      DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt      DateTime    @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  // Rempli au moment de la transition DRAFT -> PUBLISHED (EventsService.update),
+  // jamais à la création du brouillon — distinct de created_at. Voir
+  // docs/SPEC.md §9.3.
+  publishedAt    DateTime?   @map("published_at") @db.Timestamptz(6)
 
-  organization  Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  createdByUser User           @relation("EventCreator", fields: [createdBy], references: [id], onDelete: NoAction)
-  category      EventCategory? @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  organization  Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdByUser User             @relation("EventCreator", fields: [createdBy], references: [id], onDelete: NoAction)
+  category      EventCategory?   @relation(fields: [categoryId], references: [id], onDelete: Restrict)
   ticketTypes   TicketType[]
   promoCodes    PromoCode[]
   orders        Order[]
   payout        Payout?
   media         EventMedia[]
   dressCodes    EventDressCode[]
+  promotions    EventPromotion[]
 
   // CHECK (end_at > start_at), CHECK ((latitude IS NULL) = (longitude IS NULL))
   // — chk_events_lat_lng_paired, see db/schema.sql, not enforced by Prisma
@@ -361,6 +375,32 @@ model EventMedia {
   // CHECK (size_bytes > 0) — see db/schema.sql, not enforced by Prisma.
   @@index([eventId], map: "idx_event_media_event")
   @@map("event_media")
+}
+
+// ============================================================
+// 4D. MISE EN AVANT DES ÉVÈNEMENTS (page d'accueil, section "Sponsorisés")
+// — voir docs/SPEC.md §9.2, db/schema.sql section 4D
+// ============================================================
+// Entièrement pilotée par le Super Admin pour le MVP — pas de self-service
+// payant. Bornée dans le temps (starts_at/ends_at) plutôt qu'un simple
+// booléen : une mise en avant expirée sort automatiquement de la sélection
+// de DiscoveryService, pas de nettoyage manuel à faire.
+model EventPromotion {
+  id        String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  eventId   String        @map("event_id") @db.Uuid
+  type      PromotionType
+  startsAt  DateTime      @map("starts_at") @db.Timestamptz(6)
+  endsAt    DateTime      @map("ends_at") @db.Timestamptz(6)
+  createdBy String        @map("created_by") @db.Uuid
+  createdAt DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  event         Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  createdByUser User  @relation("EventPromotionCreator", fields: [createdBy], references: [id], onDelete: NoAction)
+
+  // CHECK (ends_at > starts_at) — see db/schema.sql, not enforced by Prisma.
+  @@index([eventId], map: "idx_event_promotions_event")
+  @@index([type, startsAt, endsAt], map: "idx_event_promotions_window")
+  @@map("event_promotions")
 }
 
 // ============================================================

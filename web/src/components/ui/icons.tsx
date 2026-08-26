@@ -24,6 +24,13 @@ import userCheck from '@iconify-icons/lucide/user-check';
 import ticket from '@iconify-icons/lucide/ticket';
 import badgeCheck from '@iconify-icons/lucide/badge-check';
 import menu from '@iconify-icons/lucide/menu';
+import calendar from '@iconify-icons/lucide/calendar';
+import compass from '@iconify-icons/lucide/compass';
+import zap from '@iconify-icons/lucide/zap';
+import history from '@iconify-icons/lucide/history';
+import flame from '@iconify-icons/lucide/flame';
+import gift from '@iconify-icons/lucide/gift';
+import trendingUp from '@iconify-icons/lucide/trending-up';
 
 type IconProps = { className?: string };
 
@@ -113,4 +120,32 @@ export function BadgeCheckIcon({ className }: IconProps) {
 
 export function MenuIcon({ className }: IconProps) {
   return <Icon icon={menu} className={className} />;
+}
+
+export function CalendarIcon({ className }: IconProps) {
+  return <Icon icon={calendar} className={className} />;
+}
+
+export function CompassIcon({ className }: IconProps) {
+  return <Icon icon={compass} className={className} />;
+}
+
+export function ZapIcon({ className }: IconProps) {
+  return <Icon icon={zap} className={className} />;
+}
+
+export function HistoryIcon({ className }: IconProps) {
+  return <Icon icon={history} className={className} />;
+}
+
+export function FlameIcon({ className }: IconProps) {
+  return <Icon icon={flame} className={className} />;
+}
+
+export function GiftIcon({ className }: IconProps) {
+  return <Icon icon={gift} className={className} />;
+}
+
+export function TrendingUpIcon({ className }: IconProps) {
+  return <Icon icon={trendingUp} className={className} />;
 }

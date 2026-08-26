@@ -28,6 +28,10 @@ CREATE TYPE event_status AS ENUM ('draft', 'published', 'cancelled', 'completed'
 -- cosmétique, pas critique comme l'anti-survente ou l'anti-fraude scan.
 CREATE TYPE dress_code_audience AS ENUM ('everyone', 'men', 'women');
 
+-- Mise en avant d'évènement (section 4D, page d'accueil "Sponsorisés") —
+-- entièrement pilotée par le Super Admin pour le MVP.
+CREATE TYPE promotion_type AS ENUM ('featured', 'sponsored');
+
 CREATE TYPE ticket_category AS ENUM ('standard', 'vip', 'early_bird', 'presale', 'group');
 
 CREATE TYPE ticket_access_mode AS ENUM ('public', 'presale_whitelist', 'private_link');
@@ -184,6 +188,10 @@ CREATE TABLE events (
   created_by        UUID NOT NULL REFERENCES users(id),
   created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+  -- Rempli au moment de la transition draft -> published (EventsService.update),
+  -- jamais à la création du brouillon — distinct de created_at, qui peut
+  -- précéder la publication de plusieurs semaines. Voir docs/SPEC.md §9.3.
+  published_at      TIMESTAMPTZ,
 
   CHECK (end_at > start_at),
   CONSTRAINT chk_events_lat_lng_paired CHECK ((latitude IS NULL) = (longitude IS NULL))
@@ -246,6 +254,31 @@ CREATE TABLE event_dress_codes (
 );
 
 CREATE INDEX idx_event_dress_codes_event ON event_dress_codes (event_id);
+
+
+-- ============================================================
+-- 4D. MISE EN AVANT DES ÉVÈNEMENTS (page d'accueil, section "Sponsorisés")
+-- ============================================================
+-- Entièrement pilotée par le Super Admin pour le MVP — pas de self-service
+-- payant, aucune logique de facturation branchée sur subscriptions. Bornée
+-- dans le temps (starts_at/ends_at) plutôt qu'un simple booléen : une mise
+-- en avant expirée sort automatiquement de la sélection, pas de nettoyage
+-- manuel à faire. Voir docs/SPEC.md §9.2.
+
+CREATE TABLE event_promotions (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  event_id    UUID NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+  type        promotion_type NOT NULL,
+  starts_at   TIMESTAMPTZ NOT NULL,
+  ends_at     TIMESTAMPTZ NOT NULL,
+  created_by  UUID NOT NULL REFERENCES users(id),  -- le Super Admin qui l'a activée
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+
+  CHECK (ends_at > starts_at)
+);
+
+CREATE INDEX idx_event_promotions_event ON event_promotions (event_id);
+CREATE INDEX idx_event_promotions_window ON event_promotions (type, starts_at, ends_at);
 
 
 -- ============================================================

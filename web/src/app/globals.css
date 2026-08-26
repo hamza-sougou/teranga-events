@@ -16,8 +16,8 @@
   --indigo: #5533e0;
   --amber: #ffb627;
   --emerald: #0fbf8f;
-  --border: rgba(23, 18, 31, 0.02);
-  --radius: 6px;
+  --border: 1px solid rgba(195, 195, 195, 1);
+  --radius: 2px;
 
   /* Status badge soft backgrounds — literal values from the validated
      mockup (design/mockups/zen-events-dashboard-mockup.html .status-*),
@@ -51,4 +51,24 @@
 body {
   background: var(--bg);
   color: var(--text);
+}
+
+/* Homepage hero title — marker-highlight blocks behind each wrapped line of
+   text (indigo -> amber, per user choice), not a flat background on the
+   whole hero anymore (that .home-hero-gradient was removed here). Pastel
+   tints via color-mix() rather than the raw saturated tokens — full-strength
+   indigo is too dark for --ink text to sit on top of legibly, same
+   contrast-derivation reasoning already used elsewhere in this file.
+   box-decoration-break: clone gives every wrapped line its own highlight box
+   instead of one rectangle stretching across the whole paragraph. */
+.hero-title-highlight {
+  color: var(--ink);
+  background-image: linear-gradient(
+    100deg,
+    color-mix(in srgb, var(--indigo) 45%, white) 0%,
+    color-mix(in srgb, var(--amber) 45%, white) 100%
+  );
+  padding: 0.08em 0.3em;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
 }

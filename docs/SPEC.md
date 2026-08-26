@@ -53,6 +53,7 @@ Produits à construire : (1) back-office web (Super Admin/Comptable/Support), (2
 6. **Gestion des équipes** — CRUD des employés par l'organisateur avec rôles
 7. **Tableau de bord & statistiques** — ventes temps réel, taux de remplissage, exports
 8. **Notifications** — email/SMS confirmation, rappel, annulation
+9. **Découverte / page d'accueil** — sections de listing d'évènements (tendance, proximité, mise en avant...), voir section 9
 
 ---
 
@@ -161,6 +162,8 @@ Le prix affiché varie légèrement selon le canal choisi par le client (le payi
 
 Mécanisme : appel à l'**API Déboursement (PUSH)** de PayDunya, qui transfère programmatiquement depuis le solde Zen Events vers le numéro mobile money enregistré de l'organisateur. Alternative manuelle disponible depuis le dashboard PayDunya (retrait vers mobile money ou compte bancaire) — à garder en secours mais l'automatisation via l'API est la cible pour scaler au-delà de quelques organisateurs.
 
+> **Évolution envisagée, non retenue pour le MVP** : proposer plus tard le choix entre reversement à la fin de l'évènement et reversement périodique (ex: tous les 15 jours), réservé aux organisateurs ayant déjà complété au moins un évènement sans incident sur Zen Events — même logique de confiance progressive qu'Eventbrite (nouveaux comptes forcés sur le modèle le plus prudent, options plus rapides débloquées avec l'historique). Impliquerait de retenir une réserve (pourcentage du montant) jusqu'à la fin de l'évènement même en cas de versement anticipé, pour absorber un risque de remboursement/annulation après coup. À reprendre en Phase 2/3, pas avant.
+
 ---
 
 ## 7. Roadmap
@@ -199,3 +202,49 @@ Le fournisseur de géocodage est isolé derrière une interface (`GeocodingProvi
 Nouvelle table `event_dress_codes` (one-to-many) : chaque ligne est un libellé (`label VARCHAR(25)`) rattaché à une catégorie de public (`applies_to`, enum `dress_code_audience` : `everyone`/`men`/`women`, défaut `everyone`), plus un `sort_order`. Règle : maximum 3 entrées par valeur de `applies_to`, les trois compartiments sont indépendants (pas de comptage croisé) — jusqu'à 9 lignes au total par évènement. Cette règle est validée côté application (`EventsService`), volontairement pas en `CHECK`/trigger SQL — contrainte cosmétique, pas critique comme l'anti-survente ou l'anti-fraude scan (section 4).
 
 Les deux réglages restent entièrement facultatifs : un évènement sans aucun des deux reste valide. Exposés sur la vue organisateur (édition) et sur la page publique de l'évènement, au même titre que `category`/`media` — un acheteur potentiel a un intérêt direct à voir ces informations avant l'achat. Voir `PROGRESS.md` section 3 pour le détail d'implémentation (migration, DTOs, tests).
+
+---
+
+## 9. Page d'accueil — sections de découverte
+
+**Statut : backend implémenté** (8 endpoints publics sous `/discover/*`, un par section — voir `PROGRESS.md` §14 pour le détail ; "Vus récemment" reste 100% frontend, voir 9.1), **frontend pas encore construit** (maquette puis page à faire). La page d'accueil est structurée exclusivement autour de listes/carrousels d'évènements — volontairement aucun contenu éditorial fixe (paragraphes, bannières statiques). L'application doit se comporter comme une boutique en ligne : on l'ouvre, on voit directement des évènements.
+
+### 9.1 Les neuf sections et leur source
+
+| Section | Source des données | Ajout nécessaire |
+|---|---|---|
+| **En tendance** | `orders` (statut `PAID`) + `order_items`, groupés par évènement sur une fenêtre récente (ex. 7 jours) | Aucun — nouvelle requête sur données existantes. Ne pas utiliser `ticket_types.quantity_sold` seul (cumulatif depuis toujours, pas représentatif d'une dynamique récente) |
+| **Ce week-end** | `events.start_at` (fenêtre vendredi-dimanche à venir) + `status = PUBLISHED` | Aucun |
+| **Vus récemment** | **Entièrement côté client** (`localStorage` du navigateur) — aucun compte participant n'existe (achat 100% invité), donc pas de tracking serveur | Aucun — zéro backend, session frontend dédiée |
+| **Près de toi** | `events.latitude`/`longitude` (existant) + position du navigateur, formule de Haversine en SQL | Nouvel endpoint uniquement, pas de colonne (même raisonnement que pour la carte évènement : pas de PostGIS) |
+| **Sponsorisés** | Nouvelle table `event_promotions` (voir 9.2) | Nouvelle table |
+| **Publiés récemment** | `events.published_at` (nouveau, voir 9.3) | Nouvelle colonne |
+| **Par catégorie** | `event_categories` (existant) | Aucun |
+| **Dernière chance** | `ticket_types.quantity_sold`/`quantity_total` (>85% vendu) et/ou `events.start_at` proche (48-72h) | Aucun |
+| **Gratuit** | `ticket_types.price = 0` | Aucun |
+
+### 9.2 Table `event_promotions`
+
+Mise en avant/sponsoring **entièrement pilotée par le Super Admin** pour le MVP — pas de self-service payant, aucune logique de facturation branchée sur `subscriptions`.
+
+```sql
+CREATE TABLE event_promotions (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  event_id    UUID NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+  type        promotion_type NOT NULL,  -- enum: 'featured' / 'sponsored'
+  starts_at   TIMESTAMPTZ NOT NULL,
+  ends_at     TIMESTAMPTZ NOT NULL,
+  created_by  UUID NOT NULL REFERENCES users(id),  -- le Super Admin qui l'a activé
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+```
+
+Bornée dans le temps (`starts_at`/`ends_at`) plutôt qu'un simple booléen — une mise en avant expirée sort automatiquement de la sélection, pas de nettoyage manuel à faire. Cette table est indépendante de toute logique de partenariat organisationnel (voir 9.4) — utilisable pour n'importe quelle mise en avant ponctuelle décidée par le Super Admin.
+
+### 9.3 `events.published_at`
+
+Nouveau champ (`TIMESTAMPTZ`, nullable), rempli au moment de la transition de statut vers `PUBLISHED` — distinct de `created_at`, qui correspond à la création du brouillon et peut précéder la publication de plusieurs semaines. Trier sur `created_at` pour "publiés récemment" donnerait un classement trompeur.
+
+### 9.4 Programme "Partenaires" — à l'étude, non retenu pour cette passe
+
+Idée explorée avec l'utilisateur : proposer à des organisateurs déjà réputés (soirées dansantes à Dakar) une mise en avant prolongée en échange de promotion croisée (partage du lien, logo sur leurs affiches). Le volet **commission réduite en contrepartie a été mis de côté** — l'utilisateur souhaite y réfléchir plus en profondeur avant de le construire, l'impact sur l'organisateur restant à mieux évaluer. **Aucun champ `organizations` lié à un statut de partenaire (`is_founding_partner`, `commission_override_percent`, etc.) n'est construit dans cette passe.** `event_promotions` (9.2) reste utilisable indépendamment pour toute mise en avant Super Admin, avec ou sans programme partenaires formel derrière — à reprendre plus tard si l'utilisateur valide la mécanique de commission.

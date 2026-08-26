@@ -19,6 +19,7 @@ import { ExpandableText } from '@/components/public/expandable-text';
 import { BuyPanel } from '@/components/public/buy-panel';
 import { OrganizerPanel } from '@/components/public/organizer-panel';
 import { TicketSidesheet } from '@/components/public/ticket-sidesheet';
+import { pushRecentlyViewed } from '@/lib/recently-viewed';
 import type { PublicEvent, PublicTicketType } from '@/types';
 
 // Leaflet touches window/document — must never render during SSR (same
@@ -62,6 +63,27 @@ export default function EventPage() {
     observer.observe(el);
     return () => observer.disconnect();
   }, [eventQuery.data]);
+
+  // Feeds the homepage's "Vus récemment" section (docs/SPEC.md §9.1, 100%
+  // localStorage — no backend list-by-ids endpoint exists for that section).
+  // Waits on ticketTypesQuery.isSuccess (not just eventQuery.data) so the
+  // stored snapshot's displayPrice reflects real ticket data rather than the
+  // "no ticket types yet" default of null.
+  useEffect(() => {
+    if (!eventQuery.data || !ticketTypesQuery.isSuccess) return;
+    const event = eventQuery.data;
+    const purchasable = ticketTypesQuery.data.filter((tt) => tt.isOnSale && tt.available > 0);
+    pushRecentlyViewed({
+      id: event.id,
+      slug: event.slug,
+      name: event.name,
+      category: event.category,
+      coverImageUrl: event.media.find((item) => item.type === 'IMAGE')?.url ?? null,
+      city: event.city,
+      startAt: event.startAt,
+      displayPrice: purchasable.length > 0 ? Math.min(...purchasable.map((tt) => tt.displayPrice)) : null,
+    });
+  }, [eventQuery.data, ticketTypesQuery.data, ticketTypesQuery.isSuccess]);
 
   if (eventQuery.isLoading) {
     return (
