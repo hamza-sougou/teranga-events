@@ -3,7 +3,9 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
+import { logout } from '@/lib/auth';
 import { Avatar } from '@/components/ui/avatar';
+import { RowMenu } from '@/components/ui/row-menu';
 import { Wordmark } from '@/components/ui/wordmark';
 import {
   EventsIcon,
@@ -69,13 +71,25 @@ export function Sidebar({ organizationName, roleLabel }: { organizationName: str
       <NavGroup label="Gestion" items={MANAGEMENT_ITEMS} pathname={pathname} />
 
       <div className="mt-auto border-t border-white/[0.08] pt-5">
-        <div className="flex items-center gap-2.5">
-          <Avatar name={organizationName} tone="indigo" size={32} />
-          <div>
-            <div className="text-[13px] font-bold text-on-dark">{organizationName}</div>
-            <div className="text-[11px] text-on-dark-muted">{roleLabel}</div>
-          </div>
-        </div>
+        <RowMenu
+          placement="top"
+          items={[{ label: 'Se déconnecter', tone: 'danger', onClick: logout }]}
+          trigger={({ toggle }) => (
+            <button
+              type="button"
+              aria-label="Menu du compte"
+              aria-haspopup="menu"
+              onClick={toggle}
+              className="flex w-full items-center gap-2.5 rounded px-1.5 py-1.5 text-left transition-colors hover:bg-ink-2"
+            >
+              <Avatar name={organizationName} tone="indigo" size={32} />
+              <div>
+                <div className="text-[13px] font-bold text-on-dark">{organizationName}</div>
+                <div className="text-[11px] text-on-dark-muted">{roleLabel}</div>
+              </div>
+            </button>
+          )}
+        />
       </div>
     </aside>
   );

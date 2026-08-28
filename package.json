@@ -1,7 +1,11 @@
 {
   "name": "event-manager-app",
   "private": true,
-  "workspaces": ["backend", "web"],
+  "workspaces": [
+    "backend",
+    "web",
+    "mobile-scan"
+  ],
   "scripts": {
     "dev:backend": "npm run start:dev --workspace=backend",
     "dev:web": "npm run dev --workspace=web",

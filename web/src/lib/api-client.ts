@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { clearToken, getToken } from './auth';
+import { getToken, logout } from './auth';
 
 export const apiClient = axios.create({
   baseURL: process.env.NEXT_PUBLIC_API_URL,
@@ -20,11 +20,8 @@ apiClient.interceptors.response.use(
     // an anonymous 401 (wrong password on /auth/login, a gated public
     // endpoint, ...) must stay the caller's own error to handle, not force
     // a navigation away mid-form.
-    if (error.response?.status === 401 && getToken()) {
-      clearToken();
-      if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
-        window.location.href = '/login';
-      }
+    if (error.response?.status === 401 && getToken() && window.location.pathname !== '/login') {
+      logout();
     }
     return Promise.reject(error);
   },

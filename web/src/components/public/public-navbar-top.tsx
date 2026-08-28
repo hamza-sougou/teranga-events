@@ -4,11 +4,14 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { createPortal } from 'react-dom';
 import { AnimatePresence, motion } from 'motion/react';
+import { useRouter } from 'next/navigation';
 import { useCurrentUser } from '@/hooks/use-current-user';
 import { useOverlayBehavior } from '@/hooks/use-overlay-behavior';
+import { logout } from '@/lib/auth';
 import { Wordmark } from '@/components/ui/wordmark';
 import { Avatar } from '@/components/ui/avatar';
 import { buttonClasses } from '@/components/ui/button';
+import { RowMenu } from '@/components/ui/row-menu';
 import { MenuIcon, XCloseIcon } from '@/components/ui/icons';
 
 const INFO_LINKS = [
@@ -27,6 +30,7 @@ const linkClasses = 'text-[13px] font-semibold text-text-muted transition-colors
 export function PublicNavbarTop() {
   const [menuOpen, setMenuOpen] = useState(false);
   const { isLoading, activeMembership } = useCurrentUser();
+  const router = useRouter();
 
   return (
     <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-6 sm:px-10">
@@ -43,10 +47,24 @@ export function PublicNavbarTop() {
 
         {!isLoading && (
           activeMembership ? (
-            <Link href="/dashboard" className="flex items-center gap-2.5">
-              <Avatar name={activeMembership.organization.name} tone="indigo" size={30} />
-              <span className="text-[13px] font-bold text-text">{activeMembership.organization.name}</span>
-            </Link>
+            <RowMenu
+              items={[
+                { label: 'Tableau de bord', onClick: () => router.push('/dashboard') },
+                { label: 'Se déconnecter', tone: 'danger', onClick: logout },
+              ]}
+              trigger={({ toggle }) => (
+                <button
+                  type="button"
+                  aria-label="Menu du compte"
+                  aria-haspopup="menu"
+                  onClick={toggle}
+                  className="flex items-center gap-2.5 rounded px-1.5 py-1 transition-colors hover:bg-bg"
+                >
+                  <Avatar name={activeMembership.organization.name} tone="indigo" size={30} />
+                  <span className="text-[13px] font-bold text-text">{activeMembership.organization.name}</span>
+                </button>
+              )}
+            />
           ) : (
             <>
               <Link href="/login" className={linkClasses}>
@@ -147,14 +165,26 @@ function MobileMenu({ open, onClose, isLoading, activeMembership }: MobileMenuPr
             <div className="mt-auto border-t border-border px-3 py-4">
               {!isLoading && (
                 activeMembership ? (
-                  <Link
-                    href="/dashboard"
-                    onClick={onClose}
-                    className="flex items-center gap-2.5 rounded px-3 py-2.5 hover:bg-bg"
-                  >
-                    <Avatar name={activeMembership.organization.name} tone="indigo" size={32} />
-                    <span className="text-[13px] font-bold text-text">{activeMembership.organization.name}</span>
-                  </Link>
+                  <>
+                    <Link
+                      href="/dashboard"
+                      onClick={onClose}
+                      className="flex items-center gap-2.5 rounded px-3 py-2.5 hover:bg-bg"
+                    >
+                      <Avatar name={activeMembership.organization.name} tone="indigo" size={32} />
+                      <span className="text-[13px] font-bold text-text">{activeMembership.organization.name}</span>
+                    </Link>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onClose();
+                        logout();
+                      }}
+                      className="mt-1 rounded px-3 py-2.5 text-left text-[14px] font-semibold text-danger hover:bg-bg"
+                    >
+                      Se déconnecter
+                    </button>
+                  </>
                 ) : (
                   <div className="flex flex-col gap-2 px-3">
                     <Link href="/login" onClick={onClose} className="text-[14px] font-semibold text-text-muted">
