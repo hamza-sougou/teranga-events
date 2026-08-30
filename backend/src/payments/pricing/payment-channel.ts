@@ -1,8 +1,11 @@
 // Client-facing payin channels offered at checkout (docs/SPEC.md §5.5). The
-// payment channel must be chosen on our own checkout page BEFORE the
-// PayDunya invoice is created, because PayDunya charges exactly
-// `invoice.totalAmount` with no server-side recalculation of its own — see
-// docs/MODULE_PAIEMENT_SPEC.md §5.
+// checkout page has no channel selector — `MOBILE_MONEY` is fixed as the
+// reference channel for both the preview and the real charge, same channel
+// already used for `displayPrice` everywhere else. The buyer can still pick
+// a different instrument on PayDunya's own hosted page; the amount charged
+// stays the one computed here regardless, since PayDunya charges exactly
+// `invoice.totalAmount` with no server-side recalculation of its own — an
+// accepted limitation, see docs/MODULE_PAIEMENT_SPEC.md §5/§12.
 export enum PaymentChannel {
   MOBILE_MONEY = 'MOBILE_MONEY', // Wave, Orange Money, Free Money
   CARD = 'CARD',

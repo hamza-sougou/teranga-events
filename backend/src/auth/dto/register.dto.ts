@@ -1,4 +1,4 @@
-import { IsEmail, Matches, MinLength } from 'class-validator';
+import { Equals, IsBoolean, IsEmail, MinLength } from 'class-validator';
 
 export class RegisterDto {
   @IsEmail()
@@ -7,14 +7,17 @@ export class RegisterDto {
   @MinLength(8)
   password!: string;
 
+  @MinLength(8)
+  passwordConfirmation!: string;
+
   @MinLength(2)
   fullName!: string;
 
-  @MinLength(2)
-  organizationName!: string;
+  @IsBoolean()
+  marketingOptIn!: boolean;
 
-  @Matches(/^[a-z0-9-]+$/, {
-    message: 'organizationSlug must contain only lowercase letters, digits and hyphens',
-  })
-  organizationSlug!: string;
+  // Must be explicitly true — registering without accepting terms is rejected
+  // by validation itself, not left to the service layer to check.
+  @Equals(true, { message: 'Terms of service must be accepted' })
+  termsAccepted!: boolean;
 }

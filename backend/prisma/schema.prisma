@@ -215,6 +215,12 @@ model User {
   fullName     String   @map("full_name") @db.VarChar(150)
   isSuperAdmin Boolean  @default(false) @map("is_super_admin")
   isActive     Boolean  @default(true) @map("is_active")
+  emailVerifiedAt DateTime? @map("email_verified_at") @db.Timestamptz(6)
+  termsAcceptedAt DateTime? @map("terms_accepted_at") @db.Timestamptz(6)
+  marketingOptIn  Boolean   @default(false) @map("marketing_opt_in")
+  emailVerificationCodeHash      String?   @map("email_verification_code_hash") @db.Text
+  emailVerificationCodeExpiresAt DateTime? @map("email_verification_code_expires_at") @db.Timestamptz(6)
+  emailVerificationAttempts      Int       @default(0) @map("email_verification_attempts")
   createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt    DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 

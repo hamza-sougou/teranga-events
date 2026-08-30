@@ -31,6 +31,9 @@ import history from '@iconify-icons/lucide/history';
 import flame from '@iconify-icons/lucide/flame';
 import gift from '@iconify-icons/lucide/gift';
 import trendingUp from '@iconify-icons/lucide/trending-up';
+import checkCircle from '@iconify-icons/lucide/check-circle-2';
+import xCircle from '@iconify-icons/lucide/x-circle';
+import arrowLeft from '@iconify-icons/lucide/arrow-left';
 
 type IconProps = { className?: string };
 
@@ -148,4 +151,16 @@ export function GiftIcon({ className }: IconProps) {
 
 export function TrendingUpIcon({ className }: IconProps) {
   return <Icon icon={trendingUp} className={className} />;
+}
+
+export function CheckCircleIcon({ className }: IconProps) {
+  return <Icon icon={checkCircle} className={className} />;
+}
+
+export function XCircleIcon({ className }: IconProps) {
+  return <Icon icon={xCircle} className={className} />;
+}
+
+export function ArrowLeftIcon({ className }: IconProps) {
+  return <Icon icon={arrowLeft} className={className} />;
 }

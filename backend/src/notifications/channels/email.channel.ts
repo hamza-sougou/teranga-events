@@ -19,6 +19,17 @@ export class EmailChannel {
   // stance as GoogleStrategy); createTransport() itself never connects, only
   // sendMail() does, so this never blocks app startup.
   async send(input: SendEmailInput): Promise<void> {
+    // Every e2e fixture that bootstraps an organizer goes through
+    // AuthService.register() -> issueVerificationCode() -> here, so skip
+    // the real network send under NODE_ENV=test — same "silencieux en
+    // test" stance as ThrottlerModule (app.module.ts). Tests that care
+    // about the actual call (recipient, content, failure handling) mock
+    // this method directly, as notifications.e2e-spec.ts already does.
+    if (process.env.NODE_ENV === 'test') {
+      this.logger.debug(`[test] Skipped real send to ${input.to}: ${input.subject}`);
+      return;
+    }
+
     const transport = nodemailer.createTransport({
       host: this.configService.get<string>('smtp.host'),
       port: this.configService.get<number>('smtp.port'),

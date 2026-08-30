@@ -230,6 +230,37 @@ export interface Order {
   items: OrderItem[];
 }
 
+// GET /orders/:orderId (public, no auth) — a narrower, differently-shaped
+// projection than the organizer's Order above (see
+// backend/src/orders/orders.service.ts#findPublicById): no eventId/
+// buyerEmail/createdAt, items carry a flat ticketTypeName instead of a
+// joined ticketType, and only VALID tickets (with a rendered QR data-URL)
+// are ever included per item.
+export interface PublicOrderTicket {
+  id: string;
+  status: string;
+  qrCode: string;
+}
+
+export interface PublicOrderItem {
+  ticketTypeId: string;
+  ticketTypeName: string;
+  quantity: number;
+  unitPrice: string;
+  tickets: PublicOrderTicket[];
+}
+
+export interface PublicOrder {
+  id: string;
+  status: OrderStatus;
+  subtotalAmount: string;
+  serviceFeeAmount: string;
+  totalAmount: string;
+  currency: string;
+  expiresAt: string;
+  items: PublicOrderItem[];
+}
+
 export interface Scan {
   id: string;
   result: ScanResult;

@@ -4,6 +4,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import request from 'supertest';
 import { AppModule } from '../src/app.module';
 import { AuthService } from '../src/auth/auth.service';
+import { EmailChannel } from '../src/notifications/channels/email.channel';
 import { PrismaService } from '../src/prisma/prisma.service';
 
 describe('Auth (e2e)', () => {
@@ -37,19 +38,38 @@ describe('Auth (e2e)', () => {
     await app.close();
   });
 
+  // continueWithGoogle() alone never creates an account for an unknown
+  // identity (that's the whole point of the two-step flow) — tests that
+  // need a real, fully-created Google account drive both steps.
+  async function createGoogleAccount(fullName: string) {
+    const unique = randomUUID();
+    const email = `google-${unique}@example.com`;
+    createdUserEmails.push(email);
+
+    const pending = await authService.continueWithGoogle({ googleId: `google-${unique}`, email, fullName });
+    if (pending.status !== 'signup_pending') throw new Error('expected signup_pending');
+
+    return authService.completeGoogleSignup({
+      pendingToken: pending.pendingToken,
+      marketingOptIn: false,
+      termsAccepted: true,
+    });
+  }
+
   function registerPayload() {
     const unique = randomUUID();
     return {
       email: `organizer-${unique}@example.com`,
       password: 'super-secret-password',
+      passwordConfirmation: 'super-secret-password',
       fullName: 'Amadou Ba',
-      organizationName: 'Amadou Events',
-      organizationSlug: `amadou-events-${unique}`,
+      marketingOptIn: false,
+      termsAccepted: true,
     };
   }
 
   describe('POST /auth/register + /auth/login + GET /auth/me', () => {
-    it('registers an organizer and returns a usable token', async () => {
+    it('registers an organizer, auto-names the organization, and returns a usable token', async () => {
       const payload = registerPayload();
       createdUserEmails.push(payload.email);
 
@@ -58,6 +78,9 @@ describe('Auth (e2e)', () => {
       expect(res.body.accessToken).toEqual(expect.any(String));
       expect(res.body.user.email).toBe(payload.email);
       expect(res.body.user.passwordHash).toBeUndefined();
+      expect(res.body.user.emailVerifiedAt).toBeNull();
+      expect(res.body.user.termsAcceptedAt).toEqual(expect.any(String));
+      expect(res.body.user.marketingOptIn).toBe(false);
 
       const me = await request(app.getHttpServer())
         .get('/auth/me')
@@ -66,18 +89,50 @@ describe('Auth (e2e)', () => {
 
       expect(me.body.memberships).toHaveLength(1);
       expect(me.body.memberships[0].role).toBe('OWNER');
-      expect(me.body.memberships[0].organization.slug).toBe(payload.organizationSlug);
+      // Auto-generated per the same convention already used for Google
+      // signups — "Organisation de {first name}" — never a form field.
+      expect(me.body.memberships[0].organization.name).toBe('Organisation de Amadou');
+      expect(me.body.memberships[0].organization.slug).toMatch(/^amadou-ba/);
     });
 
-    it('rejects registration with an email already in use', async () => {
+    it('rejects registration with an email already in use by a classic account', async () => {
       const payload = registerPayload();
       createdUserEmails.push(payload.email);
 
       await request(app.getHttpServer()).post('/auth/register').send(payload).expect(201);
+      await request(app.getHttpServer()).post('/auth/register').send(payload).expect(409);
+    });
+
+    it('rejects registration when password and confirmation do not match', async () => {
+      const payload = registerPayload();
+      createdUserEmails.push(payload.email);
+
       await request(app.getHttpServer())
         .post('/auth/register')
-        .send({ ...payload, organizationSlug: `${payload.organizationSlug}-2` })
+        .send({ ...payload, passwordConfirmation: 'something-else' })
+        .expect(400);
+    });
+
+    it('rejects registration when terms are not accepted', async () => {
+      const payload = registerPayload();
+      createdUserEmails.push(payload.email);
+
+      await request(app.getHttpServer())
+        .post('/auth/register')
+        .send({ ...payload, termsAccepted: false })
+        .expect(400);
+    });
+
+    it('rejects registration on an email already linked to a Google-only account, with a distinct error', async () => {
+      const google = await createGoogleAccount('Fatou Ndiaye');
+      const email = google.user.email;
+
+      const res = await request(app.getHttpServer())
+        .post('/auth/register')
+        .send({ ...registerPayload(), email })
         .expect(409);
+
+      expect(res.body.error).toBe('GOOGLE_ACCOUNT_EXISTS');
     });
 
     it('logs in with correct credentials', async () => {
@@ -109,28 +164,204 @@ describe('Auth (e2e)', () => {
     });
   });
 
-  describe('AuthService.loginWithGoogle', () => {
-    it('creates a new organizer account + placeholder organization on first Google sign-in', async () => {
-      const unique = randomUUID();
-      const email = `googleuser-${unique}@example.com`;
-      createdUserEmails.push(email);
+  describe('POST /auth/verify-email + /auth/verify-email/resend', () => {
+    async function registerAndGetCode() {
+      const payload = registerPayload();
+      createdUserEmails.push(payload.email);
+      const res = await request(app.getHttpServer()).post('/auth/register').send(payload).expect(201);
+      const accessToken = res.body.accessToken as string;
 
-      const result = await authService.loginWithGoogle({
+      const user = await prisma.user.findUniqueOrThrow({ where: { id: res.body.user.id } });
+      return { accessToken, userId: user.id };
+    }
+
+    it('verifies the email with the code sent at registration, and rejects a wrong code', async () => {
+      // Only the bcrypt hash of the code is ever persisted — tests recover
+      // the plaintext code by spying on EmailChannel.send, the one place it
+      // exists outside the hash.
+      const spy = jest.spyOn(app.get(EmailChannel, { strict: false }), 'send');
+
+      const payload = registerPayload();
+      createdUserEmails.push(payload.email);
+      const res = await request(app.getHttpServer()).post('/auth/register').send(payload).expect(201);
+      const accessToken = res.body.accessToken as string;
+
+      expect(spy).toHaveBeenCalledWith(
+        expect.objectContaining({ to: payload.email, text: expect.stringMatching(/\d{6}/) }),
+      );
+      const sentText = spy.mock.calls[spy.mock.calls.length - 1][0].text as string;
+      const code = sentText.match(/\d{6}/)![0];
+
+      await request(app.getHttpServer())
+        .post('/auth/verify-email')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ code: '000000' === code ? '111111' : '000000' })
+        .expect(400);
+
+      await request(app.getHttpServer())
+        .post('/auth/verify-email')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ code })
+        .expect(201);
+
+      const me = await request(app.getHttpServer())
+        .get('/auth/me')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(200);
+      expect(me.body.emailVerifiedAt).toEqual(expect.any(String));
+
+      spy.mockRestore();
+    });
+
+    it('rejects verification once the code has expired', async () => {
+      const { accessToken, userId } = await registerAndGetCode();
+
+      await prisma.user.update({
+        where: { id: userId },
+        data: { emailVerificationCodeExpiresAt: new Date(Date.now() - 60_000) },
+      });
+
+      await request(app.getHttpServer())
+        .post('/auth/verify-email')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ code: '123456' })
+        .expect(400);
+    });
+
+    it('locks out verification after too many wrong attempts, even with the right code afterwards', async () => {
+      const spy = jest.spyOn(app.get(EmailChannel, { strict: false }), 'send');
+
+      const payload = registerPayload();
+      createdUserEmails.push(payload.email);
+      const res = await request(app.getHttpServer()).post('/auth/register').send(payload).expect(201);
+      const accessToken = res.body.accessToken as string;
+
+      const sentText = spy.mock.calls[spy.mock.calls.length - 1][0].text as string;
+      const realCode = sentText.match(/\d{6}/)![0];
+      const wrongCode = realCode === '000001' ? '000002' : '000001';
+
+      for (let i = 0; i < 5; i++) {
+        await request(app.getHttpServer())
+          .post('/auth/verify-email')
+          .set('Authorization', `Bearer ${accessToken}`)
+          .send({ code: wrongCode })
+          .expect(400);
+      }
+
+      // 6th attempt, even with the correct code, is rejected — the code is
+      // treated as invalidated once the attempt cap is hit.
+      await request(app.getHttpServer())
+        .post('/auth/verify-email')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ code: realCode })
+        .expect(400);
+
+      spy.mockRestore();
+    });
+
+    it('resend issues a fresh code and resets the attempt counter', async () => {
+      const spy = jest.spyOn(app.get(EmailChannel, { strict: false }), 'send');
+
+      const payload = registerPayload();
+      createdUserEmails.push(payload.email);
+      const res = await request(app.getHttpServer()).post('/auth/register').send(payload).expect(201);
+      const accessToken = res.body.accessToken as string;
+
+      await request(app.getHttpServer())
+        .post('/auth/verify-email/resend')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(201);
+
+      const sentText = spy.mock.calls[spy.mock.calls.length - 1][0].text as string;
+      const freshCode = sentText.match(/\d{6}/)![0];
+
+      await request(app.getHttpServer())
+        .post('/auth/verify-email')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ code: freshCode })
+        .expect(201);
+
+      spy.mockRestore();
+    });
+
+    it('never requires a code for a Google-only account, and resend is refused', async () => {
+      const google = await createGoogleAccount('Aissatou Sow');
+
+      const me = await request(app.getHttpServer())
+        .get('/auth/me')
+        .set('Authorization', `Bearer ${google.accessToken}`)
+        .expect(200);
+      expect(me.body.emailVerifiedAt).toEqual(expect.any(String));
+
+      await request(app.getHttpServer())
+        .post('/auth/verify-email/resend')
+        .set('Authorization', `Bearer ${google.accessToken}`)
+        .expect(400);
+    });
+  });
+
+  describe('Google two-step signup (continueWithGoogle / google/pending / google/complete)', () => {
+    it('creates nothing on first sign-in for an unknown Google identity, and issues a pending token', async () => {
+      const unique = randomUUID();
+      const email = `googlenew-${unique}@example.com`;
+
+      const result = await authService.continueWithGoogle({
         googleId: `google-${unique}`,
         email,
         fullName: 'Fatou Ndiaye',
       });
 
-      expect(result.accessToken).toEqual(expect.any(String));
-      expect(result.user.email).toBe(email);
+      expect(result.status).toBe('signup_pending');
+      const count = await prisma.user.count({ where: { email } });
+      expect(count).toBe(0);
+
+      if (result.status !== 'signup_pending') throw new Error('unreachable');
+      const pending = await request(app.getHttpServer())
+        .post('/auth/google/pending')
+        .send({ token: result.pendingToken })
+        .expect(201);
+
+      expect(pending.body.email).toBe(email);
+      expect(pending.body.suggestedFullName).toBe('Fatou Ndiaye');
+      expect(pending.body.suggestedOrganizationName).toBe('Organisation de Fatou');
+    });
+
+    it('completes signup and creates user + organization + OWNER membership, email pre-verified', async () => {
+      const unique = randomUUID();
+      const email = `googlecomplete-${unique}@example.com`;
+      createdUserEmails.push(email);
+
+      const pending = await authService.continueWithGoogle({
+        googleId: `google-${unique}`,
+        email,
+        fullName: 'Omar Diallo',
+      });
+      if (pending.status !== 'signup_pending') throw new Error('expected signup_pending');
+
+      const res = await request(app.getHttpServer())
+        .post('/auth/google/complete')
+        .send({ pendingToken: pending.pendingToken, marketingOptIn: true, termsAccepted: true })
+        .expect(201);
+
+      expect(res.body.accessToken).toEqual(expect.any(String));
+      expect(res.body.user.email).toBe(email);
+      expect(res.body.user.emailVerifiedAt).toEqual(expect.any(String));
+      expect(res.body.user.marketingOptIn).toBe(true);
 
       const memberships = await prisma.organizationMember.findMany({
-        where: { userId: result.user.id },
+        where: { userId: res.body.user.id },
         include: { organization: true },
       });
       expect(memberships).toHaveLength(1);
       expect(memberships[0].role).toBe('OWNER');
-      expect(memberships[0].organization.name).toBe('Organisation de Fatou');
+      expect(memberships[0].organization.name).toBe('Organisation de Omar');
+    });
+
+    it('rejects google/complete with an invalid or expired pending token', async () => {
+      await request(app.getHttpServer())
+        .post('/auth/google/complete')
+        .send({ pendingToken: 'not-a-real-token', marketingOptIn: false, termsAccepted: true })
+        .expect(401);
     });
 
     it('reconnects the same user on a second Google sign-in without creating a duplicate', async () => {
@@ -139,27 +370,57 @@ describe('Auth (e2e)', () => {
       createdUserEmails.push(email);
       const googleId = `google-${unique}`;
 
-      const first = await authService.loginWithGoogle({ googleId, email, fullName: 'Omar Diallo' });
-      const second = await authService.loginWithGoogle({ googleId, email, fullName: 'Omar Diallo' });
+      const first = await authService.continueWithGoogle({ googleId, email, fullName: 'Omar Diallo' });
+      if (first.status !== 'signup_pending') throw new Error('expected signup_pending');
+      const created = await authService.completeGoogleSignup({
+        pendingToken: first.pendingToken,
+        marketingOptIn: false,
+        termsAccepted: true,
+      });
 
-      expect(second.user.id).toBe(first.user.id);
+      const second = await authService.continueWithGoogle({ googleId, email, fullName: 'Omar Diallo' });
+      if (second.status !== 'login') throw new Error('expected login on known googleId');
+
+      expect(second.user.id).toBe(created.user.id);
       const count = await prisma.user.count({ where: { email } });
       expect(count).toBe(1);
     });
 
-    it('links a Google identity to an existing classic account with the same email', async () => {
+    it('links a Google identity to an existing classic account with the same email (explicit login_linked)', async () => {
       const payload = registerPayload();
       createdUserEmails.push(payload.email);
       const registered = await authService.register(payload);
 
-      const linked = await authService.loginWithGoogle({
+      const linked = await authService.continueWithGoogle({
         googleId: `google-${randomUUID()}`,
         email: payload.email,
         fullName: payload.fullName,
       });
 
+      if (linked.status !== 'login_linked') throw new Error('expected login_linked');
       expect(linked.user.id).toBe(registered.user.id);
       const count = await prisma.user.count({ where: { email: payload.email } });
+      expect(count).toBe(1);
+    });
+
+    it('double-completing the same pending token is idempotent rather than erroring', async () => {
+      const unique = randomUUID();
+      const email = `googledouble-${unique}@example.com`;
+      createdUserEmails.push(email);
+
+      const pending = await authService.continueWithGoogle({
+        googleId: `google-${unique}`,
+        email,
+        fullName: 'Ibrahima Fall',
+      });
+      if (pending.status !== 'signup_pending') throw new Error('expected signup_pending');
+
+      const dto = { pendingToken: pending.pendingToken, marketingOptIn: false, termsAccepted: true };
+      const first = await authService.completeGoogleSignup(dto);
+      const second = await authService.completeGoogleSignup(dto);
+
+      expect(second.user.id).toBe(first.user.id);
+      const count = await prisma.user.count({ where: { email } });
       expect(count).toBe(1);
     });
   });
@@ -200,15 +461,7 @@ describe('Auth (e2e)', () => {
     });
 
     it('rejects changing the password on a Google-only account with a clear error, not a crash', async () => {
-      const unique = randomUUID();
-      const email = `googleonly-${unique}@example.com`;
-      createdUserEmails.push(email);
-
-      const google = await authService.loginWithGoogle({
-        googleId: `google-${unique}`,
-        email,
-        fullName: 'Aissatou Sow',
-      });
+      const google = await createGoogleAccount('Aissatou Sow');
 
       const res = await request(app.getHttpServer())
         .patch('/auth/password')
@@ -230,14 +483,7 @@ describe('Auth (e2e)', () => {
         .expect(200);
       expect(classicMe.body.hasPassword).toBe(true);
 
-      const unique = randomUUID();
-      const email = `googleonly2-${unique}@example.com`;
-      createdUserEmails.push(email);
-      const google = await authService.loginWithGoogle({
-        googleId: `google-${unique}`,
-        email,
-        fullName: 'Ibrahima Fall',
-      });
+      const google = await createGoogleAccount('Ibrahima Fall');
 
       const googleMe = await request(app.getHttpServer())
         .get('/auth/me')

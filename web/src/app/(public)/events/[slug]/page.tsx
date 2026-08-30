@@ -186,7 +186,12 @@ export default function EventPage() {
         </div>
       </div>
 
-      <TicketSidesheet open={sidesheetOpen} onClose={() => setSidesheetOpen(false)} ticketTypes={ticketTypes} />
+      <TicketSidesheet
+        open={sidesheetOpen}
+        onClose={() => setSidesheetOpen(false)}
+        ticketTypes={ticketTypes}
+        eventSlug={slug}
+      />
     </main>
   );
 }

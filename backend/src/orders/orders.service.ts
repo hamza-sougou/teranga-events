@@ -107,8 +107,8 @@ export class OrdersService {
           totalPrice: Number(item.ticketType.price) * item.quantity,
         })),
         callbackUrl: this.configService.get<string>('paydunya.callbackUrl') ?? '',
-        returnUrl: `${this.configService.get<string>('frontendUrl')}/orders/${order.id}`,
-        cancelUrl: `${this.configService.get<string>('frontendUrl')}/orders/${order.id}`,
+        returnUrl: `${this.configService.get<string>('frontendUrl')}/checkout/confirmation?orderId=${order.id}`,
+        cancelUrl: `${this.configService.get<string>('frontendUrl')}/checkout/confirmation?orderId=${order.id}`,
         customData: { orderId: order.id },
       });
 

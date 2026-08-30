@@ -1,10 +1,11 @@
 import { cn } from '@/lib/utils';
 
-type BannerTone = 'success' | 'error';
+type BannerTone = 'success' | 'error' | 'pending';
 
 const toneClasses: Record<BannerTone, string> = {
   success: 'bg-emerald-soft text-emerald-strong',
   error: 'bg-danger-soft text-danger-strong',
+  pending: 'bg-ink-soft text-text-muted',
 };
 
 export function InlineBanner({ tone, children, className }: { tone: BannerTone; children: React.ReactNode; className?: string }) {

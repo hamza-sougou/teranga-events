@@ -13,7 +13,7 @@ import { Input } from '@/components/ui/input';
 import { FormField } from '@/components/ui/form-field';
 import { Button } from '@/components/ui/button';
 import { InlineBanner } from '@/components/ui/inline-banner';
-import { SENEGAL_PHONE_MESSAGE, SENEGAL_PHONE_REGEX } from './phone-schema';
+import { SENEGAL_PHONE_MESSAGE, SENEGAL_PHONE_REGEX } from '@/lib/phone';
 
 // Mirrors backend/src/organizations/dto/update-payout-method.dto.ts.
 const payoutMethodSchema = z.object({

@@ -8,6 +8,7 @@ import { XCloseIcon } from '@/components/ui/icons';
 import { buttonClasses } from '@/components/ui/button';
 import { useOverlayBehavior } from '@/hooks/use-overlay-behavior';
 import { formatXof, cn } from '@/lib/utils';
+import { serializeCartItems } from '@/lib/cart';
 import { TicketTypeRow } from './ticket-type-row';
 import type { PublicTicketType } from '@/types';
 
@@ -15,16 +16,13 @@ interface TicketSidesheetProps {
   open: boolean;
   onClose: () => void;
   ticketTypes: PublicTicketType[];
+  eventSlug: string;
 }
 
 // Slides in from the right rather than centered like Modal, but reuses the
 // same overlay/focus/Escape/scroll-lock behavior (useOverlayBehavior) —
 // see components/ui/modal.tsx for the primitive this was extracted from.
-//
-// The "Continuer" button links to /checkout, which doesn't exist as a real
-// flow yet (next session) — an inert destination is the expected state here,
-// not a bug: this page only covers browsing + ticket selection.
-export function TicketSidesheet({ open, onClose, ticketTypes }: TicketSidesheetProps) {
+export function TicketSidesheet({ open, onClose, ticketTypes, eventSlug }: TicketSidesheetProps) {
   useOverlayBehavior(open, onClose);
   const [quantities, setQuantities] = useState<Record<string, number>>({});
 
@@ -36,6 +34,8 @@ export function TicketSidesheet({ open, onClose, ticketTypes }: TicketSidesheetP
 
   const total = ticketTypes.reduce((sum, tt) => sum + (quantities[tt.id] ?? 0) * tt.displayPrice, 0);
   const totalQuantity = Object.values(quantities).reduce((sum, q) => sum + q, 0);
+  const cartItems = Object.entries(quantities).map(([ticketTypeId, quantity]) => ({ ticketTypeId, quantity }));
+  const checkoutHref = `/checkout?event=${encodeURIComponent(eventSlug)}&items=${encodeURIComponent(serializeCartItems(cartItems))}`;
 
   return createPortal(
     <AnimatePresence>
@@ -99,7 +99,7 @@ export function TicketSidesheet({ open, onClose, ticketTypes }: TicketSidesheetP
                 <span>{formatXof(total)}</span>
               </div>
               <Link
-                href="/checkout"
+                href={checkoutHref}
                 aria-disabled={totalQuantity === 0}
                 onClick={(e) => {
                   if (totalQuantity === 0) e.preventDefault();

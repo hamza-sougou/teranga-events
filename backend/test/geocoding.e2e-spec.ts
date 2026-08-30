@@ -64,8 +64,9 @@ describe('Geocoding (e2e)', () => {
       email,
       password: 'super-secret-password',
       fullName: 'Amadou Ba',
-      organizationName: 'Amadou Events',
-      organizationSlug: `amadou-events-${unique}`,
+      passwordConfirmation: 'super-secret-password',
+      marketingOptIn: false,
+      termsAccepted: true,
     });
 
     return accessToken;

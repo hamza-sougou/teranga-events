@@ -48,6 +48,6 @@ export class GoogleStrategy extends PassportStrategy(Strategy, 'google') {
       [profile.name?.givenName, profile.name?.familyName].filter(Boolean).join(' ') ||
       email;
 
-    return this.authService.loginWithGoogle({ googleId: profile.id, email, fullName });
+    return this.authService.continueWithGoogle({ googleId: profile.id, email, fullName });
   }
 }

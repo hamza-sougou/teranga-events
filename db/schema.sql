@@ -70,6 +70,14 @@ CREATE TYPE payout_status AS ENUM ('pending', 'processing', 'paid', 'failed');
 -- mot de passe local. google_id est nullable pour le cas inverse (compte
 -- classique jamais lié à Google). Le CHECK ci-dessous garantit qu'il reste
 -- toujours au moins une méthode d'authentification utilisable.
+--
+-- Vérification email (compte classique uniquement — un compte Google a déjà
+-- prouvé la possession de l'email, email_verified_at y est posé immédiatement
+-- à la création, jamais de code généré) : un seul code actif à la fois donc
+-- colonnes directement sur users plutôt qu'une table séparée (pas d'historique
+-- de codes à conserver). email_verification_attempts plafonne le bruteforce
+-- d'un code à 6 chiffres ; au-delà de la limite applicative, le code est
+-- traité comme invalidé jusqu'à un renvoi (voir AuthService).
 CREATE TABLE users (
   id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   email           TEXT NOT NULL,
@@ -79,6 +87,18 @@ CREATE TABLE users (
   full_name       VARCHAR(150) NOT NULL,
   is_super_admin  BOOLEAN NOT NULL DEFAULT FALSE,
   is_active       BOOLEAN NOT NULL DEFAULT TRUE,
+  email_verified_at    TIMESTAMPTZ,
+  -- Preuve d'acceptation CGU : un horodatage, pas juste un booléen — c'est la
+  -- preuve de consentement à conserver. Jamais rétro-rempli pour les comptes
+  -- créés avant l'existence de ce mécanisme (voir migration add_email_verification)
+  -- : fabriquer une date de consentement qui n'a jamais eu lieu serait
+  -- malhonnête, contrairement au rétro-remplissage de email_verified_at qui
+  -- répond à une question d'accès opérationnel, pas de preuve.
+  terms_accepted_at    TIMESTAMPTZ,
+  marketing_opt_in     BOOLEAN NOT NULL DEFAULT FALSE,
+  email_verification_code_hash          TEXT,
+  email_verification_code_expires_at    TIMESTAMPTZ,
+  email_verification_attempts           INTEGER NOT NULL DEFAULT 0,
   created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
 

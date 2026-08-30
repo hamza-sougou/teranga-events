@@ -143,6 +143,7 @@ Les apps Flutter (Organisateur, Scan) ne se dockerisent pas — ce sont des apps
 
 - **[Vous]** Récupérer les clés de production sur le dashboard PayDunya, mettre à jour l'URL de l'IPN pour qu'elle pointe vers l'URL de production (pas l'ancienne URL ngrok de développement).
 - **[Claude Code]** Vérifier que le switch `test` → `live` se fait bien via variable d'environnement (`PAYDUNYA_MODE`), sans code en dur à modifier.
+- **[Vous — décision produit]** `organizations.is_verified` (KYC organisateur) existe en base depuis le premier schéma et le rôle Super Admin est censé valider les organisateurs avant qu'ils touchent de l'argent réel — mais rien n'exploite ce champ aujourd'hui : aucun endpoint ne le fait passer à `true`, aucune règle ne le vérifie avant paiement/reversement. Tout compte (classique après vérification email, ou Google — email pré-vérifié par Google dès la création, voir `AuthService.continueWithGoogle`) obtient un accès organisateur complet et immédiat, y compris la capacité de publier un évènement et d'encaisser via PayDunya, sans validation humaine. Acceptable tant que PayDunya reste en mode `test` (aucun vrai argent) ; **à traiter avant le passage en `live`** — au minimum décider si `is_verified` doit gater la publication d'évènement ou le reversement, et construire l'écran Super Admin correspondant (aujourd'hui repoussé, voir `docs/DESIGN_SYSTEM.md` "Repoussé").
 
 ---
 

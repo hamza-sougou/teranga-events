@@ -7,6 +7,10 @@ import { EventReminderJob } from './event-reminder.job';
 
 @Module({
   providers: [NotificationsService, EmailChannel, SmsChannel, NotificationsDispatchJob, EventReminderJob],
-  exports: [NotificationsService],
+  // EmailChannel is also exported directly — AuthModule reuses it for the
+  // email-verification code rather than routing through NotificationsService
+  // (which is built around the notifications table + minute-cadence dispatch
+  // job, unsuitable latency for a 15-minute-lifetime code).
+  exports: [NotificationsService, EmailChannel],
 })
 export class NotificationsModule {}

@@ -21,6 +21,8 @@ Voir `db/schema.sql` pour le détail exhaustif des tables et contraintes. Ce doc
 
 Produits à construire : (1) back-office web (Super Admin/Comptable/Support), (2) app Organisateur web+mobile (Organisateur/Co-organisateur/Vendeur), (3) app Scan mobile dédiée (Contrôleur), (4) interface participant web.
 
+> **⚠️ Risque de collision à surveiller en Phase 3 (compte Acheteur/Participant)** : le flux Google (`AuthService.continueWithGoogle`/`completeGoogleSignup`, backend/src/auth/) part du principe qu'une identité Google jamais vue appartient forcément à un **futur organisateur** — toute identité inconnue crée automatiquement utilisateur + organisation + membership `OWNER`. Ce raisonnement tient tant que "Se connecter avec Google" n'existe que sur les surfaces organisateur. La section 7 (roadmap) prévoit un compte Acheteur/Participant avec wallet optionnel en Phase 3 — si ce compte participant utilise un jour le même bouton Google (au lieu de rester 100% invité comme aujourd'hui, voir section 9.1 "Vus récemment"), le même endpoint créerait par erreur une organisation vide pour chaque acheteur. À trancher avant Phase 3 : soit un point d'entrée Google distinct pour les participants (qui ne crée jamais d'organisation), soit un paramètre d'intention explicite sur `/auth/google` que le backend actuel ne porte pas.
+
 ---
 
 ## 2. Stack technique retenue

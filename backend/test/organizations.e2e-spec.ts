@@ -46,8 +46,9 @@ describe('Organizations (e2e)', () => {
       email,
       password: 'super-secret-password',
       fullName: 'Amadou Ba',
-      organizationName: 'Amadou Events',
-      organizationSlug: `amadou-events-${unique}`,
+      passwordConfirmation: 'super-secret-password',
+      marketingOptIn: false,
+      termsAccepted: true,
     });
 
     const organization = await prisma.organization.findFirstOrThrow({
@@ -66,7 +67,7 @@ describe('Organizations (e2e)', () => {
         .set('Authorization', `Bearer ${owner.accessToken}`)
         .expect(200);
 
-      expect(res.body.name).toBe('Amadou Events');
+      expect(res.body.name).toBe('Organisation de Amadou');
       expect(res.body.payoutPhoneNumber).toBeNull();
     });
   });

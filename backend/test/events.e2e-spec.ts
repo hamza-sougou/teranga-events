@@ -47,8 +47,9 @@ describe('Events (e2e)', () => {
       email,
       password: 'super-secret-password',
       fullName: 'Amadou Ba',
-      organizationName: 'Amadou Events',
-      organizationSlug: `amadou-events-${unique}`,
+      passwordConfirmation: 'super-secret-password',
+      marketingOptIn: false,
+      termsAccepted: true,
     });
 
     const organization = await prisma.organization.findFirstOrThrow({
@@ -416,7 +417,7 @@ describe('Events (e2e)', () => {
       expect(res.body.createdBy).toBeUndefined();
       // "Organisé par" on the participant page needs the organizer's name —
       // nothing else about the organization (id, verification, etc.) leaks.
-      expect(res.body.organization).toEqual({ name: 'Amadou Events' });
+      expect(res.body.organization).toEqual({ name: 'Organisation de Amadou' });
     });
   });
 
