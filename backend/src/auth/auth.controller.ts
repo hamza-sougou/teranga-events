@@ -9,6 +9,8 @@ import { CompleteGoogleSignupDto } from './dto/complete-google-signup.dto';
 import { GooglePendingTokenDto } from './dto/google-pending-token.dto';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
+import { SuperAdminTotpSetupDto } from './dto/super-admin-totp-setup.dto';
+import { SuperAdminTotpVerifyDto } from './dto/super-admin-totp-verify.dto';
 import { VerifyEmailDto } from './dto/verify-email.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
@@ -31,6 +33,26 @@ export class AuthController {
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
   login(@Body() dto: LoginDto) {
     return this.authService.login(dto);
+  }
+
+  // Super Admin only, `totp_setup_required` case — see docs/SPEC.md §10.7.
+  @Post('super-admin/totp/setup')
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  superAdminTotpSetup(@Body() dto: SuperAdminTotpSetupDto) {
+    return this.authService.superAdminTotpSetup(dto.totpToken);
+  }
+
+  // Super Admin only, both `totp_setup_required` and `totp_required` cases.
+  // IP/User-Agent are captured here (not derivable inside AuthService) for
+  // the "connexion réussie" notification email.
+  @Post('super-admin/totp/verify')
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  superAdminTotpVerify(@Body() dto: SuperAdminTotpVerifyDto, @Req() req: Request) {
+    const userAgent = req.headers['user-agent'];
+    return this.authService.superAdminTotpVerify(dto.totpToken, dto.code, {
+      ip: req.ip,
+      userAgent: typeof userAgent === 'string' ? userAgent : undefined,
+    });
   }
 
   @Get('me')

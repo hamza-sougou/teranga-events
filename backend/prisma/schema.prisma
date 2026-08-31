@@ -221,6 +221,16 @@ model User {
   emailVerificationCodeHash      String?   @map("email_verification_code_hash") @db.Text
   emailVerificationCodeExpiresAt DateTime? @map("email_verification_code_expires_at") @db.Timestamptz(6)
   emailVerificationAttempts      Int       @default(0) @map("email_verification_attempts")
+  // 2FA TOTP (Super Admin uniquement — voir docs/SPEC.md §10.7). totpEnabledAt
+  // null + totpSecret set = configuration en cours, pas encore vérifiée.
+  // CHECK (totp_secret IS NOT NULL OR totp_enabled_at IS NULL) —
+  // chk_users_totp_enabled_requires_secret — hand-maintained in db/schema.sql,
+  // not enforced by Prisma.
+  totpSecret               String?   @map("totp_secret") @db.Text
+  totpEnabledAt            DateTime? @map("totp_enabled_at") @db.Timestamptz(6)
+  totpRecoveryCodeHashes   String[]  @default([]) @map("totp_recovery_code_hashes")
+  totpFailedAttempts       Int       @default(0) @map("totp_failed_attempts")
+  totpLockedUntil          DateTime? @map("totp_locked_until") @db.Timestamptz(6)
   createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt    DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 

@@ -4,6 +4,7 @@ import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useCurrentUser } from '@/hooks/use-current-user';
 import { Sidebar } from '@/components/dashboard/sidebar';
+import { EmailVerificationBanner } from '@/components/auth/email-verification-banner';
 import type { MemberRole } from '@/types';
 
 const ROLE_LABELS: Record<MemberRole, string> = {
@@ -47,7 +48,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         organizationName={activeMembership.organization.name}
         roleLabel={ROLE_LABELS[activeMembership.role] ?? activeMembership.role}
       />
-      <div>{children}</div>
+      <div>
+        <EmailVerificationBanner user={data} />
+        {children}
+      </div>
     </div>
   );
 }

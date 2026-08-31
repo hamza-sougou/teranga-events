@@ -1,6 +1,8 @@
 import { randomUUID } from 'crypto';
-import { INestApplication, ValidationPipe } from '@nestjs/common';
+import { INestApplication, UnauthorizedException, ValidationPipe } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
+import * as bcrypt from 'bcrypt';
+import { generate as generateTotpCode } from 'otplib';
 import request from 'supertest';
 import { AppModule } from '../src/app.module';
 import { AuthService } from '../src/auth/auth.service';
@@ -490,6 +492,187 @@ describe('Auth (e2e)', () => {
         .set('Authorization', `Bearer ${google.accessToken}`)
         .expect(200);
       expect(googleMe.body.hasPassword).toBe(false);
+    });
+  });
+
+  describe('Super Admin 2FA (POST /auth/login + /auth/super-admin/totp/*, docs/SPEC.md §10.7)', () => {
+    // No registration flow can ever produce a Super Admin account (see the
+    // "Privilege escalation guard" suite below) — the seed script is the
+    // only path, so tests replicate it directly rather than going through
+    // the API.
+    async function createSuperAdmin() {
+      const unique = randomUUID();
+      const email = `superadmin-${unique}@example.com`;
+      const password = 'super-secret-admin-password';
+      createdUserEmails.push(email);
+
+      await prisma.user.create({
+        data: {
+          email,
+          passwordHash: await bcrypt.hash(password, 10),
+          fullName: 'Super Admin Test',
+          isSuperAdmin: true,
+        },
+      });
+
+      return { email, password };
+    }
+
+    it('requires TOTP setup on first login, before any secret is configured', async () => {
+      const { email, password } = await createSuperAdmin();
+
+      const res = await request(app.getHttpServer())
+        .post('/auth/login')
+        .send({ email, password })
+        .expect(201);
+
+      expect(res.body.status).toBe('totp_setup_required');
+      expect(res.body.totpToken).toEqual(expect.any(String));
+      expect(res.body.accessToken).toBeUndefined();
+    });
+
+    it('completes setup, verifies with a real TOTP code, and requires only verification on the next login', async () => {
+      const { email, password } = await createSuperAdmin();
+
+      const login = await request(app.getHttpServer())
+        .post('/auth/login')
+        .send({ email, password })
+        .expect(201);
+      expect(login.body.status).toBe('totp_setup_required');
+
+      const setup = await request(app.getHttpServer())
+        .post('/auth/super-admin/totp/setup')
+        .send({ totpToken: login.body.totpToken })
+        .expect(201);
+
+      expect(setup.body.otpauthUrl).toMatch(/^otpauth:\/\/totp\//);
+      expect(setup.body.secret).toEqual(expect.any(String));
+      expect(setup.body.recoveryCodes).toHaveLength(10);
+
+      const code = await generateTotpCode({ secret: setup.body.secret });
+
+      const verify = await request(app.getHttpServer())
+        .post('/auth/super-admin/totp/verify')
+        .send({ totpToken: login.body.totpToken, code })
+        .expect(201);
+
+      expect(verify.body.accessToken).toEqual(expect.any(String));
+      expect(verify.body.user.email).toBe(email);
+      expect(verify.body.user.isSuperAdmin).toBe(true);
+      expect(verify.body.user.totpSecret).toBeUndefined();
+
+      const secondLogin = await request(app.getHttpServer())
+        .post('/auth/login')
+        .send({ email, password })
+        .expect(201);
+      expect(secondLogin.body.status).toBe('totp_required');
+
+      const secondVerify = await request(app.getHttpServer())
+        .post('/auth/super-admin/totp/verify')
+        .send({ totpToken: secondLogin.body.totpToken, code: await generateTotpCode({ secret: setup.body.secret }) })
+        .expect(201);
+      expect(secondVerify.body.accessToken).toEqual(expect.any(String));
+    });
+
+    it('rejects an invalid TOTP code and locks the account out after too many attempts', async () => {
+      const { email, password } = await createSuperAdmin();
+      const login = await request(app.getHttpServer()).post('/auth/login').send({ email, password }).expect(201);
+      const setup = await request(app.getHttpServer())
+        .post('/auth/super-admin/totp/setup')
+        .send({ totpToken: login.body.totpToken })
+        .expect(201);
+
+      const realCode = await generateTotpCode({ secret: setup.body.secret });
+      const wrongCode = realCode === '000000' ? '111111' : '000000';
+
+      for (let i = 0; i < 5; i++) {
+        await request(app.getHttpServer())
+          .post('/auth/super-admin/totp/verify')
+          .send({ totpToken: login.body.totpToken, code: wrongCode })
+          .expect(401);
+      }
+
+      // 6th attempt, even with the correct code, is rejected — the account
+      // is locked regardless of which code is presented.
+      await request(app.getHttpServer())
+        .post('/auth/super-admin/totp/verify')
+        .send({ totpToken: login.body.totpToken, code: realCode })
+        .expect(401);
+    });
+
+    it('consumes a recovery code once and rejects reuse of the same code', async () => {
+      const { email, password } = await createSuperAdmin();
+      const login = await request(app.getHttpServer()).post('/auth/login').send({ email, password }).expect(201);
+      const setup = await request(app.getHttpServer())
+        .post('/auth/super-admin/totp/setup')
+        .send({ totpToken: login.body.totpToken })
+        .expect(201);
+
+      const recoveryCode = setup.body.recoveryCodes[0] as string;
+
+      await request(app.getHttpServer())
+        .post('/auth/super-admin/totp/verify')
+        .send({ totpToken: login.body.totpToken, code: recoveryCode })
+        .expect(201);
+
+      // Same temp token, not yet expired — proves single-use, not just a
+      // freshly-issued token no longer carrying the code.
+      await request(app.getHttpServer())
+        .post('/auth/super-admin/totp/verify')
+        .send({ totpToken: login.body.totpToken, code: recoveryCode })
+        .expect(401);
+    });
+
+    it('blocks the Google flow for a super admin account, on both the googleId and email lookup branches', async () => {
+      const { email } = await createSuperAdmin();
+      const unique = randomUUID();
+      const user = await prisma.user.findFirstOrThrow({ where: { email } });
+      // Not reachable through the public API (the seed script never sets a
+      // googleId) — set directly to exercise the defense-in-depth guard.
+      await prisma.user.update({ where: { id: user.id }, data: { googleId: `google-${unique}` } });
+
+      await expect(
+        authService.continueWithGoogle({ googleId: `google-${unique}`, email, fullName: 'Super Admin Test' }),
+      ).rejects.toThrow(UnauthorizedException);
+
+      await expect(
+        authService.continueWithGoogle({ googleId: `google-other-${unique}`, email, fullName: 'Super Admin Test' }),
+      ).rejects.toThrow(UnauthorizedException);
+    });
+  });
+
+  describe('Privilege escalation guard — isSuperAdmin can never be set via a public registration flow', () => {
+    it('ignores isSuperAdmin injected into POST /auth/register', async () => {
+      const payload = { ...registerPayload(), isSuperAdmin: true };
+      createdUserEmails.push(payload.email);
+
+      const res = await request(app.getHttpServer()).post('/auth/register').send(payload).expect(201);
+
+      expect(res.body.user.isSuperAdmin).toBe(false);
+      const user = await prisma.user.findUniqueOrThrow({ where: { id: res.body.user.id } });
+      expect(user.isSuperAdmin).toBe(false);
+    });
+
+    it('ignores isSuperAdmin injected into POST /auth/google/complete', async () => {
+      const unique = randomUUID();
+      const email = `googleescalation-${unique}@example.com`;
+      createdUserEmails.push(email);
+
+      const pending = await authService.continueWithGoogle({
+        googleId: `google-${unique}`,
+        email,
+        fullName: 'Test Escalation',
+      });
+      if (pending.status !== 'signup_pending') throw new Error('expected signup_pending');
+
+      const res = await request(app.getHttpServer())
+        .post('/auth/google/complete')
+        .send({ pendingToken: pending.pendingToken, marketingOptIn: false, termsAccepted: true, isSuperAdmin: true })
+        .expect(201);
+
+      expect(res.body.user.isSuperAdmin).toBe(false);
+      const user = await prisma.user.findUniqueOrThrow({ where: { id: res.body.user.id } });
+      expect(user.isSuperAdmin).toBe(false);
     });
   });
 });

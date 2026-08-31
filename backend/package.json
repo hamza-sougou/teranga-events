@@ -47,6 +47,7 @@
     "multer": "^2.2.0",
     "nestjs-pino": "^4.6.1",
     "nodemailer": "^6.9.15",
+    "otplib": "^13.5.0",
     "passport": "^0.7.0",
     "passport-google-oauth20": "^2.0.0",
     "passport-jwt": "^4.0.1",

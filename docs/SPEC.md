@@ -266,3 +266,166 @@ Nouveau champ (`TIMESTAMPTZ`, nullable), rempli au moment de la transition de st
 ### 9.4 Programme "Partenaires" — à l'étude, non retenu pour cette passe
 
 Idée explorée avec l'utilisateur : proposer à des organisateurs déjà réputés (soirées dansantes à Dakar) une mise en avant prolongée en échange de promotion croisée (partage du lien, logo sur leurs affiches). Le volet **commission réduite en contrepartie a été mis de côté** — l'utilisateur souhaite y réfléchir plus en profondeur avant de le construire, l'impact sur l'organisateur restant à mieux évaluer. **Aucun champ `organizations` lié à un statut de partenaire (`is_founding_partner`, `commission_override_percent`, etc.) n'est construit dans cette passe.** `event_promotions` (9.2) reste utilisable indépendamment pour toute mise en avant Super Admin, avec ou sans programme partenaires formel derrière — à reprendre plus tard si l'utilisateur valide la mécanique de commission.
+
+## 10. Module Super Admin
+
+**Statut : scope défini, backend pas encore construit.** Contrairement aux
+autres profils, le Super Admin (`users.is_super_admin`, booléen global)
+n'appartient à aucune organisation — orthogonal au système
+`organization_members`/`MemberRole` déjà en place. Sa vue est celle de toute
+la plateforme, pas celle d'une organisation : un tableau de bord d'une nature
+différente de ceux déjà construits, pas une variante avec plus de droits.
+
+### 10.1 Ce qui existe déjà
+
+- `users.is_super_admin` + script de seed du compte Super Admin.
+- Déclenchement manuel de reversement dans le module `payouts/` — la seule
+  action Super Admin réellement fonctionnelle à ce jour.
+
+### 10.2 Validation des organisateurs
+
+- Liste des organisations avec leur statut (`organizations.is_verified`,
+  colonne présente depuis le premier schéma, jamais exploitée).
+- Action de valider/rejeter, avec le minimum d'information nécessaire pour
+  juger (contact, évènements déjà créés, historique de ventes).
+- Ce statut devient le point d'appui naturel pour restreindre toute future
+  fonctionnalité à fort risque de fraude (ex : génération de billets
+  imprimables pour vente physique — sujet mis de côté pour l'instant, voir
+  discussion à reprendre plus tard).
+
+### 10.3 Modération
+
+- Vue de tous les évènements de la plateforme (recherche/filtre par
+  organisateur, statut, date) — pas juste ceux d'une organisation,
+  contrairement au dashboard organisateur existant.
+- Suspension/annulation d'un évènement en cas de signalement.
+- Suspension d'un compte organisateur ou d'un membre d'équipe en cas de
+  fraude avérée.
+
+### 10.4 Finances plateforme, stats incluses
+
+- Agrégat des revenus de commission sur l'ensemble de la plateforme —
+  aujourd'hui chaque organisateur ne voit que ses propres stats
+  (`GET /organizations/:id/stats`), rien n'agrège au niveau plateforme.
+- Suivi des reversements en échec nécessitant une attention (le retry existe
+  déjà côté job, mais aucune vue ne montre les déboursements échoués et leur
+  raison).
+- **Croissance dans le temps** (nombre d'organisateurs, d'évènements, de
+  billets vendus) — retenu dès cette passe, à la demande explicite de
+  l'utilisateur, plutôt que reporté à plus tard.
+
+### 10.5 Deux manques additionnels, découverts en revue du projet
+
+- **Mise en avant (`event_promotions`)** : la table existe et la lecture
+  publique fonctionne (section "Sponsorisés" de la page d'accueil, §9), mais
+  aucun endpoint ne permet d'en créer une — le Super Admin ne peut
+  aujourd'hui rien mettre en avant.
+- **Journal d'audit (`audit_logs`)** : table présente dans `db/schema.sql`
+  depuis la toute première version du schéma, sans confirmation qu'un module
+  construit depuis l'alimente réellement — à vérifier en exploration avant
+  de construire une vue dessus, pas à supposer vide ou pleine.
+
+### 10.6 Volontairement hors périmètre
+
+- **Support/litiges** — rôle documenté comme distinct et optionnel depuis le
+  premier message du projet ; absorbé par le Super Admin pour un premier jet
+  plutôt qu'un profil séparé construit maintenant.
+
+### 10.7 Authentification et sécurité du compte Super Admin
+
+**Statut : implémenté côté backend** (voir `PROGRESS.md`) — cette section
+documente le comportement réellement construit, pas seulement l'intention de
+départ.
+
+**Aucun formulaire séparé** — le compte Super Admin utilise la page `/login` 
+existante (email + mot de passe), pas une seconde surface à maintenir. La 
+distinction se fait après l'authentification, pas à l'entrée : le backend 
+vérifie `is_super_admin` et redirige vers `/admin` plutôt que `/dashboard`
+(la redirection frontend elle-même reste à construire — session dédiée à
+venir, `GET /auth/me` expose déjà `isSuperAdmin`). Aucune route/URL 
+"secrète" — l'obscurité d'URL n'est pas une protection réelle, et créerait 
+une cible identifiée plutôt qu'une barrière.
+
+**2FA (TOTP) obligatoire pour ce compte.** `POST /auth/login` ne délivre
+jamais de session complète pour un compte `is_super_admin = true` : après un
+mot de passe correct, il renvoie `{ status: 'totp_setup_required' |
+'totp_required', totpToken }` — un jeton signé de 5 minutes, sans `sub`
+(même principe que le jeton `signup_pending` de Google, §2 : jamais
+acceptable comme jeton d'accès normal par `JwtStrategy`). `totp_setup_required`
+(aucun secret encore actif) déclenche `POST /auth/super-admin/totp/setup`,
+qui génère le secret (`otplib`), l'URI `otpauth://` standard, le secret brut
+en repli pour saisie manuelle, et 10 codes de récupération — rien de tout
+cela n'active encore le compte. Les deux cas convergent ensuite vers `POST
+/auth/super-admin/totp/verify` (code TOTP à 6 chiffres ou code de
+récupération), qui active le secret au premier succès et délivre la vraie
+session.
+
+Note d'implémentation à connaître pour toute session future touchant ce
+module : `otplib` v13 tire en transitif un paquet ESM pur sans build CJS
+(`@scure/base`). Ça fonctionne sous le vrai Node (interop `require(esm)`
+native, stable depuis Node 22.12) mais casse le chargeur de modules interne
+de Jest — et puisque `AppModule` charge `AuthModule` de façon
+inconditionnelle, ça fait échouer **toute** la suite e2e au démarrage, pas
+seulement les tests d'auth. Corrigé via `transformIgnorePatterns` dans
+`backend/test/jest-e2e.json` (paquets `otplib`/`@otplib`/`@scure`/`@noble`
+explicitement sortis de l'ignore par défaut des `node_modules`).
+
+**Codes de récupération — générés dès la configuration, pas reportés à
+plus tard.** Un seul compte Super Admin existe et aucun autre mécanisme de
+récupération 2FA n'est en place : le risque de blocage total (téléphone
+perdu, app d'authentification supprimée) est réel, pas hypothétique. 10
+codes alphanumériques à usage unique (format `xxxx-xxxx-xxxx`), hachés
+individuellement (bcrypt — même traitement que le code de vérification
+email, §10.7 ci-dessus) et stockés dans `users.totp_recovery_code_hashes`
+(`TEXT[]` — une table dédiée serait disproportionnée pour un seul compte).
+Renvoyés en clair **une seule fois**, dans la réponse de `/totp/setup`,
+jamais journalisés ni re-dérivables depuis les hachages ensuite. Consommer un
+code le retire du tableau (usage unique) et délivre une session au même
+titre qu'un code TOTP valide. Explicitement différé : un endpoint de
+régénération des codes une fois le TOTP déjà actif (codes épuisés ou
+suspectés compromis) — à construire plus tard si le besoin se présente,
+hors périmètre de cette passe.
+
+**Verrouillage par compte, indépendant du `@Throttle` par IP existant.** Un
+code TOTP tourne en continu (contrairement au code de vérification email, à
+durée de vie fixe et donc "épuisable" par un simple compteur d'essais), et un
+nouveau jeton temporaire est mintable à chaque `POST /auth/login` — le
+plafond doit donc porter sur le compte, pas sur le jeton ni sur l'IP
+appelante. `users.totp_failed_attempts`/`totp_locked_until` : 5 échecs
+consécutifs (code TOTP ou code de récupération, même compteur) déclenchent un
+verrouillage de 15 minutes, y compris pour un code par ailleurs correct
+présenté pendant la fenêtre ; remis à zéro sur tout succès.
+
+**Pas de "Se connecter avec Google" pour ce compte** — bloqué dans
+`AuthService.continueWithGoogle`, sur les deux branches de résolution (par
+`googleId` et par email) : défense en profondeur, ce chemin n'étant de toute
+façon pas atteignable en pratique aujourd'hui (le script de seed ne pose
+jamais de `googleId`). Le flux Google en deux temps (§2) reste entièrement
+pensé pour l'auto-inscription d'organisateurs.
+
+**Notification email à chaque connexion réussie** — réutilise
+`EmailChannel`/`nodemailer` déjà en place, envoi fire-and-forget (même
+discipline que le code de vérification email : jamais bloquant sur le
+chemin critique, jamais de vrai envoi sous `NODE_ENV=test`), avec IP et
+User-Agent de la requête quand disponibles — une alerte sans aucun détail
+identifiant serait peu actionnable pour repérer un accès illégitime.
+
+**Durée de session réduite — 2 heures**, contre 24h (`JWT_EXPIRES_IN` par
+défaut) pour un compte organisateur. Justification retenue : usage Super
+Admin exclusivement web/bureau, en sessions de travail courtes (validation
+d'organisateurs, modération) — jamais un usage mobile/terrain nécessitant une
+persistance longue comme pour un Organisateur en plein évènement. Réduit
+nettement la fenêtre d'exploitation d'une session volée sans forcer une
+reconnexion en plein milieu d'une tâche de modération. Codée en dur
+(`SUPER_ADMIN_SESSION_TTL` dans `AuthService`), pas une variable
+d'environnement — même choix que la durée du jeton `signup_pending` de
+Google.
+
+**Garde-fou anti-élévation — vérifié par exploration de code, puis testé.**
+Aucun flux d'inscription (classique, complétion Google, acceptation
+d'invitation d'équipe) n'accepte ni ne peut positionner `is_super_admin` —
+seul `backend/prisma/seed.ts` le fait, hors HTTP. Confirmé en plus par deux
+tests e2e qui injectent `isSuperAdmin: true` dans le corps de `POST
+/auth/register` et `POST /auth/google/complete` : toujours `false` en base
+(le `ValidationPipe({ whitelist: true })` global supprime le champ avant
+même d'atteindre le DTO).

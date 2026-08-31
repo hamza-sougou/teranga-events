@@ -70,7 +70,7 @@ export function PublicNavbarTop() {
               <Link href="/login" className={linkClasses}>
                 Je suis organisateur
               </Link>
-              <Link href="/login" className={buttonClasses('primary')}>
+              <Link href="/register" className={buttonClasses('primary')}>
                 Se connecter / S&apos;inscrire
               </Link>
             </>
@@ -191,7 +191,7 @@ function MobileMenu({ open, onClose, isLoading, activeMembership }: MobileMenuPr
                       Je suis organisateur
                     </Link>
                     <Link
-                      href="/login"
+                      href="/register"
                       onClick={onClose}
                       className={buttonClasses('primary', 'w-full justify-center')}
                     >

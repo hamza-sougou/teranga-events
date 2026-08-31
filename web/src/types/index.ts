@@ -50,6 +50,11 @@ export interface CurrentUser {
   // false for an account created via Google Sign-In that never set a
   // password — the settings page uses this to hide the change-password form.
   hasPassword: boolean;
+  // null for an unverified classic account, or one whose verification is
+  // still pending. Always set for a Google account (Google already proved
+  // email ownership at signup) — never gates login, see
+  // EmailVerificationBanner.
+  emailVerifiedAt: string | null;
   memberships: Membership[];
 }
 

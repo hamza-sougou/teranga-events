@@ -99,10 +99,29 @@ CREATE TABLE users (
   email_verification_code_hash          TEXT,
   email_verification_code_expires_at    TIMESTAMPTZ,
   email_verification_attempts           INTEGER NOT NULL DEFAULT 0,
+  -- 2FA TOTP (Super Admin uniquement, obligatoire pour ce rôle — voir
+  -- docs/SPEC.md §10.7). totp_secret est posé dès l'étape de configuration,
+  -- avant toute vérification réussie ; totp_enabled_at ne l'est qu'après un
+  -- premier code validé — c'est ce dernier champ qui distingue "en cours de
+  -- configuration" de "actif" (permet de relancer la configuration sans
+  -- rester bloqué si le jeton temporaire expire avant la vérification).
+  -- totp_failed_attempts/totp_locked_until forment un verrou par compte,
+  -- indépendant du @Throttle par IP : un code TOTP tourne en continu
+  -- (contrairement au code email à durée de vie fixe), donc pas de valeur
+  -- unique à épuiser comme pour email_verification_attempts.
+  -- totp_recovery_code_hashes : codes de secours à usage unique, hachés,
+  -- générés une seule fois à la configuration — un seul compte Super Admin
+  -- existe et aucun autre mécanisme de récupération 2FA n'est en place.
+  totp_secret               TEXT,
+  totp_enabled_at           TIMESTAMPTZ,
+  totp_recovery_code_hashes TEXT[] NOT NULL DEFAULT '{}',
+  totp_failed_attempts      INTEGER NOT NULL DEFAULT 0,
+  totp_locked_until         TIMESTAMPTZ,
   created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
 
-  CONSTRAINT chk_users_auth_method CHECK (password_hash IS NOT NULL OR google_id IS NOT NULL)
+  CONSTRAINT chk_users_auth_method CHECK (password_hash IS NOT NULL OR google_id IS NOT NULL),
+  CONSTRAINT chk_users_totp_enabled_requires_secret CHECK (totp_secret IS NOT NULL OR totp_enabled_at IS NULL)
 );
 
 CREATE UNIQUE INDEX idx_users_email_lower ON users (lower(email));
