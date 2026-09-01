@@ -26,6 +26,11 @@ const EVENT_CARD_SELECT = {
   },
 } satisfies Prisma.EventSelect;
 
+// Every discovery query below filters `status: PUBLISHED` — this adds the
+// same "not from a suspended organization" condition, spread into each
+// `where` so it composes with whatever else that section already filters on.
+const NOT_SUSPENDED = { organization: { suspendedAt: null } } satisfies Prisma.EventWhereInput;
+
 type EventCardRow = Prisma.EventGetPayload<{ select: typeof EVENT_CARD_SELECT }>;
 
 @Injectable()
@@ -40,7 +45,11 @@ export class DiscoveryService {
   async trending(limit = DEFAULT_LIMIT): Promise<EventCardDto[]> {
     const windowStart = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
     const orders = await this.prisma.order.findMany({
-      where: { status: OrderStatus.PAID, createdAt: { gte: windowStart }, event: { status: EventStatus.PUBLISHED } },
+      where: {
+        status: OrderStatus.PAID,
+        createdAt: { gte: windowStart },
+        event: { status: EventStatus.PUBLISHED, ...NOT_SUSPENDED },
+      },
       select: { eventId: true, items: { select: { quantity: true } } },
     });
 
@@ -64,7 +73,7 @@ export class DiscoveryService {
   async thisWeekend(limit = DEFAULT_LIMIT): Promise<EventCardDto[]> {
     const now = new Date();
     const events = await this.prisma.event.findMany({
-      where: { status: EventStatus.PUBLISHED, startAt: { gte: now, lte: getWeekendEnd(now) } },
+      where: { status: EventStatus.PUBLISHED, startAt: { gte: now, lte: getWeekendEnd(now) }, ...NOT_SUSPENDED },
       orderBy: { startAt: 'asc' },
       take: limit,
       select: EVENT_CARD_SELECT,
@@ -78,12 +87,13 @@ export class DiscoveryService {
   async nearMe(lat: number, lng: number, radiusKm = 25, limit = DEFAULT_LIMIT): Promise<EventCardDto[]> {
     const nearby = await this.prisma.$queryRaw<{ id: string }[]>`
       SELECT id FROM (
-        SELECT id, (6371 * acos(LEAST(1, GREATEST(-1,
+        SELECT events.id, (6371 * acos(LEAST(1, GREATEST(-1,
           cos(radians(${lat})) * cos(radians(latitude)) * cos(radians(longitude) - radians(${lng}))
           + sin(radians(${lat})) * sin(radians(latitude))
         )))) AS distance_km
         FROM events
-        WHERE status = 'published' AND latitude IS NOT NULL AND longitude IS NOT NULL
+        JOIN organizations ON organizations.id = events.organization_id AND organizations.suspended_at IS NULL
+        WHERE events.status = 'published' AND latitude IS NOT NULL AND longitude IS NOT NULL
       ) AS event_distances
       WHERE distance_km <= ${radiusKm}
       ORDER BY distance_km ASC
@@ -98,7 +108,7 @@ export class DiscoveryService {
   async sponsored(limit = DEFAULT_LIMIT): Promise<EventCardDto[]> {
     const now = new Date();
     const promotions = await this.prisma.eventPromotion.findMany({
-      where: { startsAt: { lte: now }, endsAt: { gte: now }, event: { status: EventStatus.PUBLISHED } },
+      where: { startsAt: { lte: now }, endsAt: { gte: now }, event: { status: EventStatus.PUBLISHED, ...NOT_SUSPENDED } },
       orderBy: { endsAt: 'asc' },
       distinct: ['eventId'],
       take: limit,
@@ -110,7 +120,7 @@ export class DiscoveryService {
   // "Publiés récemment" — published_at, jamais created_at (docs/SPEC.md §9.3).
   async recentlyPublished(limit = DEFAULT_LIMIT): Promise<EventCardDto[]> {
     const events = await this.prisma.event.findMany({
-      where: { status: EventStatus.PUBLISHED, publishedAt: { not: null } },
+      where: { status: EventStatus.PUBLISHED, publishedAt: { not: null }, ...NOT_SUSPENDED },
       orderBy: { publishedAt: 'desc' },
       take: limit,
       select: EVENT_CARD_SELECT,
@@ -124,7 +134,7 @@ export class DiscoveryService {
       throw new NotFoundException('Category not found');
     }
     const events = await this.prisma.event.findMany({
-      where: { status: EventStatus.PUBLISHED, categoryId: category.id },
+      where: { status: EventStatus.PUBLISHED, categoryId: category.id, ...NOT_SUSPENDED },
       orderBy: { startAt: 'asc' },
       take: limit,
       select: EVENT_CARD_SELECT,
@@ -143,7 +153,7 @@ export class DiscoveryService {
     const soonThreshold = new Date(now.getTime() + 72 * 60 * 60 * 1000);
 
     const candidates = await this.prisma.event.findMany({
-      where: { status: EventStatus.PUBLISHED, startAt: { gt: now } },
+      where: { status: EventStatus.PUBLISHED, startAt: { gt: now }, ...NOT_SUSPENDED },
       orderBy: { startAt: 'asc' },
       take: 200,
       select: {
@@ -179,6 +189,7 @@ export class DiscoveryService {
     const events = await this.prisma.event.findMany({
       where: {
         status: EventStatus.PUBLISHED,
+        ...NOT_SUSPENDED,
         ticketTypes: {
           some: {
             price: 0,
@@ -202,7 +213,7 @@ export class DiscoveryService {
   private async cardsInOrder(eventIds: string[]): Promise<EventCardDto[]> {
     if (eventIds.length === 0) return [];
     const events = await this.prisma.event.findMany({
-      where: { id: { in: eventIds } },
+      where: { id: { in: eventIds }, ...NOT_SUSPENDED },
       select: EVENT_CARD_SELECT,
     });
     const byId = new Map(events.map((event) => [event.id, event]));

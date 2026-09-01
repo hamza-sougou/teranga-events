@@ -265,6 +265,7 @@ model Organization {
   contactEmail String?  @map("contact_email") @db.Text
   contactPhone String?  @map("contact_phone") @db.VarChar(20)
   isVerified   Boolean  @default(false) @map("is_verified")
+  suspendedAt  DateTime? @map("suspended_at") @db.Timestamptz(6)
   payoutPhoneNumber String? @map("payout_phone_number") @db.VarChar(20)
   createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt    DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)

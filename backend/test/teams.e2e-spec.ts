@@ -255,4 +255,70 @@ describe('Teams (e2e)', () => {
         .expect(403);
     });
   });
+
+  describe('Super Admin moderation of an individual member (docs/SPEC.md §10.3)', () => {
+    // No new backend endpoint for this — OrganizationRolesGuard already
+    // bypasses role checks for a super admin on any :organizationId, so the
+    // existing organizer-facing routes work cross-org as-is.
+    async function promoteToSuperAdmin(userId: string) {
+      await prisma.user.update({ where: { id: userId }, data: { isSuperAdmin: true } });
+    }
+
+    it('lets a super admin suspend then reactivate a non-OWNER member of an organization they do not belong to, logging an audit entry each time', async () => {
+      const admin = await registerOrganizer();
+      await promoteToSuperAdmin(admin.userId);
+      const owner = await registerOrganizer();
+      const seller = await registerOrganizer();
+      const membership = await prisma.organizationMember.create({
+        data: { organizationId: owner.organizationId, userId: seller.userId, role: 'SELLER', status: 'ACTIVE' },
+      });
+
+      const listRes = await request(app.getHttpServer())
+        .get(`/organizations/${owner.organizationId}/members`)
+        .set('Authorization', `Bearer ${admin.accessToken}`)
+        .expect(200);
+      expect(listRes.body.map((m: { id: string }) => m.id)).toEqual(expect.arrayContaining([membership.id]));
+
+      const suspendRes = await request(app.getHttpServer())
+        .patch(`/organizations/${owner.organizationId}/members/${membership.id}`)
+        .set('Authorization', `Bearer ${admin.accessToken}`)
+        .send({ status: 'SUSPENDED' })
+        .expect(200);
+      expect(suspendRes.body.status).toBe('SUSPENDED');
+
+      const suspendLog = await prisma.auditLog.findFirst({
+        where: { entityType: 'organization_member', entityId: membership.id, action: 'member.suspended' },
+      });
+      expect(suspendLog?.actorUserId).toBe(admin.userId);
+
+      const reactivateRes = await request(app.getHttpServer())
+        .patch(`/organizations/${owner.organizationId}/members/${membership.id}`)
+        .set('Authorization', `Bearer ${admin.accessToken}`)
+        .send({ status: 'ACTIVE' })
+        .expect(200);
+      expect(reactivateRes.body.status).toBe('ACTIVE');
+
+      const reactivateLog = await prisma.auditLog.findFirst({
+        where: { entityType: 'organization_member', entityId: membership.id, action: 'member.reactivated' },
+      });
+      expect(reactivateLog?.actorUserId).toBe(admin.userId);
+
+      await prisma.auditLog.deleteMany({ where: { entityType: 'organization_member', entityId: membership.id } });
+    });
+
+    it('still rejects a super admin trying to suspend the OWNER row through this endpoint', async () => {
+      const admin = await registerOrganizer();
+      await promoteToSuperAdmin(admin.userId);
+      const owner = await registerOrganizer();
+      const ownerMembership = await prisma.organizationMember.findFirstOrThrow({
+        where: { organizationId: owner.organizationId, role: 'OWNER' },
+      });
+
+      await request(app.getHttpServer())
+        .patch(`/organizations/${owner.organizationId}/members/${ownerMembership.id}`)
+        .set('Authorization', `Bearer ${admin.accessToken}`)
+        .send({ status: 'SUSPENDED' })
+        .expect(400);
+    });
+  });
 });

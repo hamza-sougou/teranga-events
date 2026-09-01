@@ -4,6 +4,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreateEventDto } from './dto/create-event.dto';
 import { UpdateEventDto } from './dto/update-event.dto';
 import { DressCodeEntryDto } from './dto/dress-code-entry.dto';
+import { AdminEventsQueryDto } from './dto/admin-events-query.dto';
 import { NotificationsService } from '../notifications/notifications.service';
 
 // Maximum dress code entries per applies_to value — the three buckets
@@ -99,6 +100,41 @@ export class EventsService {
 
   findAllForOrganization(organizationId: string) {
     return this.prisma.event.findMany({ where: { organizationId }, include: { category: true } });
+  }
+
+  // Super Admin moderation view (docs/SPEC.md §10.3) — cross-organization,
+  // unlike findAllForOrganization above. Plain Prisma composition, no raw
+  // SQL/pagination, same scale reasoning as OrganizationsService.findAllForSuperAdmin.
+  findAllForSuperAdmin(filters: AdminEventsQueryDto) {
+    const where: Prisma.EventWhereInput = {
+      organizationId: filters.organizationId,
+      status: filters.status,
+      startAt:
+        filters.from || filters.to
+          ? { gte: filters.from ? new Date(filters.from) : undefined, lte: filters.to ? new Date(filters.to) : undefined }
+          : undefined,
+      ...(filters.q && {
+        OR: [
+          { name: { contains: filters.q, mode: 'insensitive' } },
+          { organization: { name: { contains: filters.q, mode: 'insensitive' } } },
+        ],
+      }),
+    };
+
+    return this.prisma.event.findMany({
+      where,
+      orderBy: { startAt: 'desc' },
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+        status: true,
+        startAt: true,
+        endAt: true,
+        category: { select: { label: true } },
+        organization: { select: { id: true, name: true } },
+      },
+    });
   }
 
   async findOneForOrganization(organizationId: string, eventId: string) {
@@ -220,9 +256,36 @@ export class EventsService {
     return updated;
   }
 
+  // Super Admin moderation (docs/SPEC.md §10.3) — "suspendre" and "annuler"
+  // an event collapse into the same action: EventStatus has no separate
+  // SUSPENDED value, and this deliberately reuses update()/ALLOWED_TRANSITIONS
+  // as-is (same 400 on an already-terminal event, same publish-image rule,
+  // same notifyEventCancelled) rather than a second transition path.
+  async adminCancel(eventId: string, actorUserId: string, reason?: string) {
+    const event = await this.prisma.event.findUniqueOrThrow({ where: { id: eventId } });
+    const updated = await this.update(event.organizationId, eventId, { status: EventStatus.CANCELLED });
+
+    await this.prisma.auditLog.create({
+      data: {
+        actorUserId,
+        organizationId: event.organizationId,
+        action: 'event.admin_cancelled',
+        entityType: 'event',
+        entityId: eventId,
+        metadata: reason ? { reason } : undefined,
+      },
+    });
+
+    return updated;
+  }
+
   async findPublicBySlug(slug: string) {
     const event = await this.prisma.event.findFirst({
-      where: { slug, status: { in: [EventStatus.PUBLISHED, EventStatus.COMPLETED] } },
+      where: {
+        slug,
+        status: { in: [EventStatus.PUBLISHED, EventStatus.COMPLETED] },
+        organization: { suspendedAt: null },
+      },
       select: PUBLIC_EVENT_SELECT,
     });
     if (!event) {

@@ -9,6 +9,7 @@ import users from '@iconify-icons/lucide/users';
 import wallet from '@iconify-icons/lucide/wallet';
 import settings from '@iconify-icons/lucide/settings';
 import bell from '@iconify-icons/lucide/bell';
+import building2 from '@iconify-icons/lucide/building-2';
 
 type IconProps = { className?: string };
 
@@ -38,4 +39,8 @@ export function SettingsIcon({ className }: IconProps) {
 
 export function BellIcon({ className }: IconProps) {
   return <Icon icon={bell} className={className} />;
+}
+
+export function BuildingIcon({ className }: IconProps) {
+  return <Icon icon={building2} className={className} />;
 }

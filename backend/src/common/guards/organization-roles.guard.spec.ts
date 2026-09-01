@@ -48,11 +48,27 @@ describe('OrganizationRolesGuard', () => {
       userId,
       role: MemberRole.CO_ORGANIZER,
       status: MemberStatus.ACTIVE,
+      organization: { suspendedAt: null },
     });
 
     await expect(
       guard.canActivate(makeContext({ id: userId, isSuperAdmin: false })),
     ).resolves.toBe(true);
+  });
+
+  it('rejects an active member with the right role when the organization is suspended', async () => {
+    jest.spyOn(reflector, 'getAllAndOverride').mockReturnValue([MemberRole.OWNER]);
+    prisma.organizationMember.findUnique.mockResolvedValue({
+      organizationId,
+      userId,
+      role: MemberRole.OWNER,
+      status: MemberStatus.ACTIVE,
+      organization: { suspendedAt: new Date() },
+    });
+
+    await expect(guard.canActivate(makeContext({ id: userId }))).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
   });
 
   it('rejects a member whose role is not in the required list', async () => {

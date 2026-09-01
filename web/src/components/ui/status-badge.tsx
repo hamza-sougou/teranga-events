@@ -122,3 +122,20 @@ export function MemberStatusBadge({ status }: { status: MemberStatus }) {
   const { label, tone } = MEMBER_STATUS[status];
   return <Badge label={label} tone={tone} />;
 }
+
+// Super Admin organizations list — organizations.is_verified is a plain
+// boolean (no separate "rejected" state in the schema), so only 2 tones.
+export function OrganizationVerificationBadge({ isVerified }: { isVerified: boolean }) {
+  return isVerified ? (
+    <Badge label="Vérifiée" tone="positive" />
+  ) : (
+    <Badge label="Non vérifiée" tone="pending" />
+  );
+}
+
+// Independent of OrganizationVerificationBadge above — an organization can be
+// verified AND suspended at the same time (fraud found after the fact).
+// suspendedAt is a plain nullable timestamp, not a 3-state enum.
+export function OrganizationSuspensionBadge({ suspendedAt }: { suspendedAt: string | null }) {
+  return suspendedAt ? <Badge label="Suspendu" tone="neutral" /> : <Badge label="Actif" tone="positive" />;
+}

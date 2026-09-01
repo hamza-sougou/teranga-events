@@ -31,4 +31,7 @@ export const queryKeys = {
   discoverFree: () => ['discover-free'],
   orderPreview: (eventId?: string, itemsKey?: string) => ['order-preview', eventId, itemsKey],
   publicOrder: (orderId?: string) => ['public-order', orderId],
+  adminOrganizations: () => ['admin-organizations'],
+  adminOrgMembers: (organizationId?: string) => ['admin-org-members', organizationId],
+  adminEvents: (filters?: Record<string, string | undefined>) => ['admin-events', filters],
 };

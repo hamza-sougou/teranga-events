@@ -201,8 +201,14 @@ export class OrdersService {
     items: OrderItemDto[],
     buyerEmail?: string,
   ): Promise<{ event: { id: string; name: string }; resolvedItems: ResolvedItem[]; subtotalAmount: number }> {
-    const event = await this.prisma.event.findUnique({ where: { id: eventId } });
-    if (!event || event.status !== EventStatus.PUBLISHED) {
+    const event = await this.prisma.event.findUnique({
+      where: { id: eventId },
+      include: { organization: { select: { suspendedAt: true } } },
+    });
+    // A suspended organization's events are treated as not found, same as a
+    // non-PUBLISHED event — a stale/shared checkout link must not still be
+    // payable once the organization is frozen for fraud (docs/SPEC.md §10.3).
+    if (!event || event.status !== EventStatus.PUBLISHED || event.organization.suspendedAt) {
       throw new NotFoundException('Event not found');
     }
 

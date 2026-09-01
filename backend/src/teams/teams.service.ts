@@ -57,15 +57,33 @@ export class TeamsService {
     return membership;
   }
 
-  async update(organizationId: string, memberId: string, dto: UpdateMemberDto) {
+  async update(organizationId: string, memberId: string, dto: UpdateMemberDto, actorUserId?: string) {
     const member = await this.findOneForOrganization(organizationId, memberId);
     this.assertNotOwner(member.role);
 
-    return this.prisma.organizationMember.update({
+    const updated = await this.prisma.organizationMember.update({
       where: { id: memberId },
       data: { role: dto.role, status: dto.status },
       include: MEMBER_INCLUDE,
     });
+
+    // Security-relevant either way (a team member frozen out or restored) —
+    // logged regardless of who the actor is (a manager suspending their own
+    // seller, or a Super Admin moderating), same pattern as AuditLog's only
+    // other writer today (PaymentsService).
+    if (dto.status && dto.status !== member.status) {
+      await this.prisma.auditLog.create({
+        data: {
+          actorUserId,
+          organizationId,
+          action: dto.status === MemberStatus.SUSPENDED ? 'member.suspended' : 'member.reactivated',
+          entityType: 'organization_member',
+          entityId: memberId,
+        },
+      });
+    }
+
+    return updated;
   }
 
   async remove(organizationId: string, memberId: string) {

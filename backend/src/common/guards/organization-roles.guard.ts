@@ -40,10 +40,18 @@ export class OrganizationRolesGuard implements CanActivate {
 
     const membership = await this.prisma.organizationMember.findUnique({
       where: { organizationId_userId: { organizationId, userId: user.id } },
+      include: { organization: { select: { suspendedAt: true } } },
     });
 
     if (!membership || membership.status !== 'ACTIVE' || !requiredRoles.includes(membership.role)) {
       throw new ForbiddenException('Insufficient organization role');
+    }
+
+    // Account-level freeze (Super Admin moderation) — blocks every member,
+    // OWNER included, unlike an individual member's own `status` which can
+    // never be set to SUSPENDED on the OWNER row (TeamsService.assertNotOwner).
+    if (membership.organization.suspendedAt) {
+      throw new ForbiddenException('This organization is suspended');
     }
 
     request.membership = membership;

@@ -139,6 +139,7 @@ CREATE TABLE organizations (
   contact_email     TEXT,
   contact_phone     VARCHAR(20),
   is_verified       BOOLEAN NOT NULL DEFAULT FALSE, -- KYC organisateur
+  suspended_at      TIMESTAMPTZ, -- gel Super Admin (fraude avérée) : bloque toute action org-scopée + achat + visibilité publique, voir OrganizationRolesGuard
   payout_phone_number VARCHAR(20), -- numéro mobile money pour le reversement PayDunya (API Déboursement, section 8B)
   created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at        TIMESTAMPTZ NOT NULL DEFAULT now()

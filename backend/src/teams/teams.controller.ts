@@ -37,9 +37,10 @@ export class TeamsController {
   update(
     @Param('organizationId') organizationId: string,
     @Param('memberId') memberId: string,
+    @CurrentUser() user: AuthenticatedUser,
     @Body() dto: UpdateMemberDto,
   ) {
-    return this.teamsService.update(organizationId, memberId, dto);
+    return this.teamsService.update(organizationId, memberId, dto, user.id);
   }
 
   @Delete(':memberId')

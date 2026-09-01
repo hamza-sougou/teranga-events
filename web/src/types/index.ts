@@ -33,6 +33,44 @@ export interface OrganizationProfile {
   isVerified: boolean;
 }
 
+// GET /admin/organizations — Super Admin only. eventsCount/salesVolume are
+// computed server-side (see OrganizationsService.findAllForSuperAdmin),
+// salesVolume is the organizer's part (subtotalAmount) of PAID orders only.
+export interface AdminOrganizationListItem {
+  id: string;
+  name: string;
+  slug: string;
+  contactEmail: string | null;
+  contactPhone: string | null;
+  isVerified: boolean;
+  suspendedAt: string | null;
+  createdAt: string;
+  eventsCount: number;
+  salesVolume: number;
+  owner: { id: string; fullName: string; email: string };
+}
+
+// GET /admin/events — Super Admin only, cross-organization moderation view.
+export interface AdminEventListItem {
+  id: string;
+  name: string;
+  slug: string;
+  status: EventStatus;
+  startAt: string;
+  endAt: string;
+  category: { label: string } | null;
+  organization: { id: string; name: string };
+}
+
+// GET /organizations/:organizationId/members — also used by the admin
+// "Voir l'équipe" panel (same shape, Super Admin already allowed to call it).
+export interface AdminOrgMember {
+  id: string;
+  role: MemberRole;
+  status: MemberStatus;
+  user: { id: string; fullName: string; email: string };
+}
+
 export interface Membership {
   id: string;
   organizationId: string;

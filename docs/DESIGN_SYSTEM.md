@@ -110,5 +110,11 @@ Chaque page = une session Claude Code dédiée, en plan mode, validée avant de 
 10. Redirection paiement PayDunya + page de confirmation — backend prêt, webhook déjà vérifié en conditions réelles (paiement sandbox réel via ngrok)
 11. Connexion / inscription (email + Google) — backend prêt (`auth`)
 
+### Super Admin (back-office plateforme)
+1. ✅ **Validation des organisateurs** (`/admin/organizations` — shell `/admin` + liste + valider/rejeter) *(construite et vérifiée visuellement — Playwright à 375/768/1280px, voir `PROGRESS.md` §20)* — backend prêt (`admin/organizations`, `SuperAdminGuard` réutilisé)
+2. ✅ **Modération — évènements (`/admin/events`) et suspension de compte (`/admin/organizations` étendue)** *(construite, vérifiée en conditions réelles via l'API — pas de Playwright disponible dans ce repo, même limite que les sections 17/18/19 — voir `PROGRESS.md` §21)* — backend prêt (`admin/events`, `admin/organizations/:id/suspension`)
+3. Finances / stats plateforme — bloqué côté backend, voir "Repoussé"
+
 ### Repoussé — dépendances non résolues, ne pas démarrer avant qu'elles le soient
-- **Super Admin (tableau de bord plateforme, validation/modération des organisateurs, finances plateforme)** — bloqué côté backend : le seul endpoint protégé par `SuperAdminGuard` aujourd'hui déclenche manuellement un reversement, rien d'autre. Aucune route pour faire basculer `organizations.is_verified`, aucune agrégation "finances plateforme". À traiter comme un mini-module backend à part avant de commencer ces pages.
+- **Super Admin — Finances/stats plateforme** — bloqué côté backend : aucune route d'agrégation "finances plateforme" n'existe au-delà du déclenchement manuel de reversement. À traiter comme un mini-module backend à part avant de commencer cette page.
+- **UI de connexion Super Admin (configuration/vérification TOTP)** — le backend (`docs/SPEC.md` §10.7) répond `totp_setup_required`/`totp_required` au lieu d'un `accessToken` classique pour ce compte, mais `/login` ne gère pas encore cette réponse : un Super Admin ne peut pas se connecter de bout en bout via le frontend actuel, indépendamment des pages Super Admin elles-mêmes (voir `PROGRESS.md` §20).

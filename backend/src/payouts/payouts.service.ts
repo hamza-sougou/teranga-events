@@ -21,6 +21,7 @@ export class PayoutsService {
       where: {
         endAt: { lt: new Date() },
         status: { not: EventStatus.CANCELLED },
+        organization: { suspendedAt: null },
         OR: [{ payout: { is: null } }, { payout: { is: { status: PayoutStatus.FAILED } } }],
       },
       select: { id: true },
@@ -41,6 +42,9 @@ export class PayoutsService {
 
     if (event.status === EventStatus.CANCELLED) {
       return { eventId, skipped: 'event cancelled' };
+    }
+    if (event.organization.suspendedAt) {
+      return { eventId, skipped: 'organization suspended' };
     }
     if (event.endAt > new Date()) {
       return { eventId, skipped: 'event has not ended yet' };
