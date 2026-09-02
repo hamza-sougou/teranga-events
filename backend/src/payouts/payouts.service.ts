@@ -168,4 +168,58 @@ export class PayoutsService {
       triggeredAt: event.payout?.triggeredAt ?? null,
     }));
   }
+
+  // Platform-wide equivalent of getOverviewForOrganization above, for the
+  // Super Admin "Finances plateforme" overview (docs/SPEC.md §10.4) — same
+  // "live due" reasoning for events that ended but have no payouts row yet,
+  // generalized without an organizationId filter, plus the FAILED list the
+  // spec calls out ("suivi des reversements en échec nécessitant une
+  // attention" — the retry job exists, no view surfaced these before).
+  async getPlatformOverview() {
+    const [paidAgg, pendingAgg, failedPayouts, endedEventsWithoutPayout] = await Promise.all([
+      this.prisma.payout.aggregate({
+        where: { status: PayoutStatus.PAID },
+        _sum: { amountPaid: true },
+      }),
+      this.prisma.payout.aggregate({
+        where: { status: { in: [PayoutStatus.PENDING, PayoutStatus.PROCESSING] } },
+        _sum: { amountDue: true },
+      }),
+      this.prisma.payout.findMany({
+        where: { status: PayoutStatus.FAILED },
+        orderBy: { triggeredAt: 'desc' },
+        include: { event: { select: { id: true, name: true } }, organization: { select: { id: true, name: true } } },
+      }),
+      this.prisma.event.findMany({
+        where: {
+          endAt: { lt: new Date() },
+          status: { not: EventStatus.CANCELLED },
+          payout: { is: null },
+          orders: { some: { status: OrderStatus.PAID } },
+        },
+        select: { id: true },
+      }),
+    ]);
+
+    const liveDue = endedEventsWithoutPayout.length
+      ? await this.prisma.order.aggregate({
+          where: { eventId: { in: endedEventsWithoutPayout.map((event) => event.id) }, status: OrderStatus.PAID },
+          _sum: { subtotalAmount: true },
+        })
+      : null;
+
+    return {
+      totalPaidOut: Number(paidAgg._sum.amountPaid ?? 0),
+      totalPending: Number(pendingAgg._sum.amountDue ?? 0) + Number(liveDue?._sum.subtotalAmount ?? 0),
+      failedPayouts: failedPayouts.map((payout) => ({
+        eventId: payout.eventId,
+        eventName: payout.event.name,
+        organizationId: payout.organizationId,
+        organizationName: payout.organization.name,
+        amountDue: Number(payout.amountDue),
+        errorMessage: (payout.rawResponse as { error?: string } | null)?.error ?? null,
+        triggeredAt: payout.triggeredAt,
+      })),
+    };
+  }
 }

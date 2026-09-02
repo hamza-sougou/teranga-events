@@ -34,4 +34,5 @@ export const queryKeys = {
   adminOrganizations: () => ['admin-organizations'],
   adminOrgMembers: (organizationId?: string) => ['admin-org-members', organizationId],
   adminEvents: (filters?: Record<string, string | undefined>) => ['admin-events', filters],
+  adminFinanceOverview: () => ['admin-finance-overview'],
 };

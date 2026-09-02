@@ -7,7 +7,7 @@ import { logout } from '@/lib/auth';
 import { Avatar } from '@/components/ui/avatar';
 import { RowMenu } from '@/components/ui/row-menu';
 import { Wordmark } from '@/components/ui/wordmark';
-import { BuildingIcon, EventsIcon } from '@/components/dashboard/nav-icons';
+import { BuildingIcon, EventsIcon, FinancesIcon } from '@/components/dashboard/nav-icons';
 
 interface NavItem {
   href: string;
@@ -15,11 +15,10 @@ interface NavItem {
   icon: (props: { className?: string }) => React.ReactElement;
 }
 
-// Finances plateforme (docs/SPEC.md §10.4) will join this group once its own
-// session builds it — not scaffolded ahead of time.
 const PLATFORM_ITEMS: NavItem[] = [
   { href: '/admin/organizations', label: 'Organisations', icon: BuildingIcon },
   { href: '/admin/events', label: 'Évènements', icon: EventsIcon },
+  { href: '/admin/finances', label: 'Finances', icon: FinancesIcon },
 ];
 
 function NavGroup({ label, items, pathname }: { label: string; items: NavItem[]; pathname: string }) {

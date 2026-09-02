@@ -113,8 +113,7 @@ Chaque page = une session Claude Code dédiée, en plan mode, validée avant de 
 ### Super Admin (back-office plateforme)
 1. ✅ **Validation des organisateurs** (`/admin/organizations` — shell `/admin` + liste + valider/rejeter) *(construite et vérifiée visuellement — Playwright à 375/768/1280px, voir `PROGRESS.md` §20)* — backend prêt (`admin/organizations`, `SuperAdminGuard` réutilisé)
 2. ✅ **Modération — évènements (`/admin/events`) et suspension de compte (`/admin/organizations` étendue)** *(construite, vérifiée en conditions réelles via l'API — pas de Playwright disponible dans ce repo, même limite que les sections 17/18/19 — voir `PROGRESS.md` §21)* — backend prêt (`admin/events`, `admin/organizations/:id/suspension`)
-3. Finances / stats plateforme — bloqué côté backend, voir "Repoussé"
+3. ✅ **Finances plateforme** (`/admin/finances` — GMV, commission, reversements versés/en attente/en échec, croissance 6 mois) *(construite et vérifiée visuellement — Playwright à 375/768/1280px, voir `PROGRESS.md` §22)* — backend prêt (nouveau mini-module `admin-finance`, compose `StatsService`/`PayoutsService`)
 
 ### Repoussé — dépendances non résolues, ne pas démarrer avant qu'elles le soient
-- **Super Admin — Finances/stats plateforme** — bloqué côté backend : aucune route d'agrégation "finances plateforme" n'existe au-delà du déclenchement manuel de reversement. À traiter comme un mini-module backend à part avant de commencer cette page.
 - **UI de connexion Super Admin (configuration/vérification TOTP)** — le backend (`docs/SPEC.md` §10.7) répond `totp_setup_required`/`totp_required` au lieu d'un `accessToken` classique pour ce compte, mais `/login` ne gère pas encore cette réponse : un Super Admin ne peut pas se connecter de bout en bout via le frontend actuel, indépendamment des pages Super Admin elles-mêmes (voir `PROGRESS.md` §20).

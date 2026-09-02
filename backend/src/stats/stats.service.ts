@@ -184,6 +184,25 @@ export class StatsService {
     });
   }
 
+  // Platform-wide equivalent of getOrganizationStats' revenue aggregate —
+  // same query, just without the organizationId filter. Backs the Super
+  // Admin "Finances plateforme" overview (docs/SPEC.md §10.4).
+  async getPlatformStats() {
+    const revenueAgg = await this.prisma.order.aggregate({
+      where: { status: OrderStatus.PAID },
+      _sum: { subtotalAmount: true, serviceFeeAmount: true, totalAmount: true },
+      _count: true,
+    });
+
+    return {
+      gmv: Number(revenueAgg._sum.totalAmount ?? 0),
+      organizerRevenue: Number(revenueAgg._sum.subtotalAmount ?? 0),
+      platformCommission: Number(revenueAgg._sum.serviceFeeAmount ?? 0),
+      currency: 'XOF',
+      paidOrdersCount: revenueAgg._count,
+    };
+  }
+
   async exportEventOrdersCsv(organizationId: string, eventId: string): Promise<string> {
     await this.eventsService.findOneForOrganization(organizationId, eventId);
     const orders = await this.prisma.order.findMany({ where: { eventId }, orderBy: { createdAt: 'asc' } });

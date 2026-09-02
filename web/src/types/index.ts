@@ -62,6 +62,30 @@ export interface AdminEventListItem {
   organization: { id: string; name: string };
 }
 
+// GET /admin/finance/overview — Super Admin only, platform-wide (not
+// org-scoped, unlike stats.service.ts's per-organization equivalent).
+export interface AdminFinanceOverview {
+  gmv: number;
+  organizerRevenue: number;
+  platformCommission: number;
+  currency: string;
+  paidOrdersCount: number;
+  payouts: {
+    totalPaidOut: number;
+    totalPending: number;
+    failedPayouts: {
+      eventId: string;
+      eventName: string;
+      organizationId: string;
+      organizationName: string;
+      amountDue: number;
+      errorMessage: string | null;
+      triggeredAt: string | null;
+    }[];
+  };
+  growth: { month: string; newOrganizations: number; newEvents: number; ticketsSold: number }[];
+}
+
 // GET /organizations/:organizationId/members — also used by the admin
 // "Voir l'équipe" panel (same shape, Super Admin already allowed to call it).
 export interface AdminOrgMember {
