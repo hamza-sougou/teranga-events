@@ -288,7 +288,7 @@ describe('Notifications (e2e)', () => {
     const inviteeUser = await prisma.user.findUniqueOrThrow({ where: { id: invitee.userId } });
 
     await teamsService.invite(owner.organizationId, owner.userId, {
-      email: inviteeUser.email,
+      email: inviteeUser.email!,
       role: MemberRole.CO_ORGANIZER,
     });
 

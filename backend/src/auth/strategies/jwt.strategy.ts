@@ -6,7 +6,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 
 export interface AuthenticatedUser {
   id: string;
-  email: string;
+  email: string | null;
   fullName: string;
   isSuperAdmin: boolean;
   isActive: boolean;

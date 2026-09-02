@@ -12,6 +12,7 @@ import { RegisterDto } from './dto/register.dto';
 import { SuperAdminTotpSetupDto } from './dto/super-admin-totp-setup.dto';
 import { SuperAdminTotpVerifyDto } from './dto/super-admin-totp-verify.dto';
 import { VerifyEmailDto } from './dto/verify-email.dto';
+import { VerifyPhoneDto } from './dto/verify-phone.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { AuthenticatedUser } from './strategies/jwt.strategy';
@@ -79,6 +80,20 @@ export class AuthController {
   @Throttle({ default: { limit: 3, ttl: 300_000 } })
   resendVerificationCode(@CurrentUser() user: AuthenticatedUser) {
     return this.authService.resendVerificationCode(user.id);
+  }
+
+  @Post('verify-phone')
+  @UseGuards(JwtAuthGuard)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  verifyPhone(@CurrentUser() user: AuthenticatedUser, @Body() dto: VerifyPhoneDto) {
+    return this.authService.verifyPhone(user.id, dto);
+  }
+
+  @Post('verify-phone/resend')
+  @UseGuards(JwtAuthGuard)
+  @Throttle({ default: { limit: 3, ttl: 300_000 } })
+  resendPhoneVerificationCode(@CurrentUser() user: AuthenticatedUser) {
+    return this.authService.resendPhoneVerificationCode(user.id);
   }
 
   @Get('google')

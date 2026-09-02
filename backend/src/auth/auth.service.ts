@@ -6,11 +6,13 @@ import * as bcrypt from 'bcrypt';
 import { generateSecret, generateURI, verify as verifyTotp } from 'otplib';
 import { PrismaService } from '../prisma/prisma.service';
 import { EmailChannel } from '../notifications/channels/email.channel';
+import { SmsChannel } from '../notifications/channels/sms.channel';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { CompleteGoogleSignupDto } from './dto/complete-google-signup.dto';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 import { VerifyEmailDto } from './dto/verify-email.dto';
+import { VerifyPhoneDto } from './dto/verify-phone.dto';
 
 const GOOGLE_PENDING_TOKEN_TTL = '15m';
 const VERIFICATION_CODE_TTL_MINUTES = 15;
@@ -77,6 +79,7 @@ export class AuthService {
     private readonly prisma: PrismaService,
     private readonly jwtService: JwtService,
     private readonly emailChannel: EmailChannel,
+    private readonly smsChannel: SmsChannel,
   ) {}
 
   async register(dto: RegisterDto) {
@@ -84,7 +87,12 @@ export class AuthService {
       throw new BadRequestException('Passwords do not match');
     }
 
-    await this.assertEmailAvailableForClassicRegistration(dto.email);
+    if (dto.email) {
+      await this.assertEmailAvailableForClassicRegistration(dto.email);
+    }
+    if (dto.phone) {
+      await this.assertPhoneAvailableForRegistration(dto.phone);
+    }
 
     const passwordHash = await bcrypt.hash(dto.password, 10);
 
@@ -92,6 +100,7 @@ export class AuthService {
     try {
       user = await this.createOrganizerAccountAutoNamed({
         email: dto.email,
+        phoneNumber: dto.phone,
         fullName: dto.fullName,
         passwordHash,
         marketingOptIn: dto.marketingOptIn,
@@ -99,20 +108,25 @@ export class AuthService {
       });
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
-        throw new ConflictException('Email already in use');
+        throw new ConflictException(dto.email ? 'Email already in use' : 'Phone number already in use');
       }
       throw error;
     }
 
-    await this.issueVerificationCode(user);
+    if (user.email) {
+      await this.issueEmailVerificationCode(user);
+    }
+    if (user.phoneNumber) {
+      await this.issuePhoneVerificationCode(user);
+    }
 
     return this.buildAuthResponse(user);
   }
 
   async login(dto: LoginDto): Promise<LoginResult> {
-    const user = await this.prisma.user.findFirst({
-      where: { email: { equals: dto.email, mode: 'insensitive' } },
-    });
+    const user = dto.email
+      ? await this.prisma.user.findFirst({ where: { email: { equals: dto.email, mode: 'insensitive' } } })
+      : await this.prisma.user.findFirst({ where: { phoneNumber: dto.phone } });
 
     if (!user || !user.isActive || !user.passwordHash) {
       throw new UnauthorizedException('Invalid credentials');
@@ -121,6 +135,16 @@ export class AuthService {
     const passwordMatches = await bcrypt.compare(dto.password, user.passwordHash);
     if (!passwordMatches) {
       throw new UnauthorizedException('Invalid credentials');
+    }
+
+    // Defense in depth, checked only after the password has already been
+    // verified — same account-enumeration-safe placement as the Super Admin
+    // branch just below (docs/SPEC.md §10.7). The Super Admin account never
+    // has a phoneNumber set in practice, but nothing else structurally
+    // prevents reaching this branch, so it's rejected explicitly rather than
+    // relying on that.
+    if (user.isSuperAdmin && dto.phone) {
+      throw new UnauthorizedException('Super admin accounts cannot sign in with a phone number');
     }
 
     // Never issue a full session directly for a Super Admin — the password
@@ -148,7 +172,11 @@ export class AuthService {
     const payload = this.decodeSuperAdminTotpToken(totpToken);
     const user = await this.prisma.user.findUniqueOrThrow({ where: { id: payload.userId } });
 
-    if (!user.isSuperAdmin) {
+    // Super Admin accounts are always email + password + TOTP (never phone
+    // — see docs/SPEC.md §10.7), so user.email is guaranteed non-null here;
+    // the check doubles as the narrowing TypeScript needs for generateURI's
+    // label below, now that email is nullable in general.
+    if (!user.isSuperAdmin || !user.email) {
       throw new UnauthorizedException('Invalid or expired token');
     }
     if (user.totpEnabledAt) {
@@ -345,6 +373,9 @@ export class AuthService {
   async verifyEmail(userId: string, dto: VerifyEmailDto) {
     const user = await this.prisma.user.findUniqueOrThrow({ where: { id: userId } });
 
+    if (!user.email) {
+      throw new BadRequestException('This account has no email to verify');
+    }
     if (user.emailVerifiedAt) {
       return { success: true, alreadyVerified: true };
     }
@@ -386,6 +417,9 @@ export class AuthService {
   async resendVerificationCode(userId: string) {
     const user = await this.prisma.user.findUniqueOrThrow({ where: { id: userId } });
 
+    if (!user.email) {
+      throw new BadRequestException('This account has no email to verify');
+    }
     if (user.emailVerifiedAt) {
       throw new BadRequestException('Email already verified');
     }
@@ -393,7 +427,65 @@ export class AuthService {
       throw new BadRequestException('This account does not require email verification');
     }
 
-    await this.issueVerificationCode(user);
+    await this.issueEmailVerificationCode(user);
+    return { success: true };
+  }
+
+  async verifyPhone(userId: string, dto: VerifyPhoneDto) {
+    const user = await this.prisma.user.findUniqueOrThrow({ where: { id: userId } });
+
+    if (user.phoneVerifiedAt) {
+      return { success: true, alreadyVerified: true };
+    }
+
+    if (
+      !user.phoneVerificationCodeHash ||
+      !user.phoneVerificationCodeExpiresAt ||
+      user.phoneVerificationCodeExpiresAt.getTime() < Date.now()
+    ) {
+      throw new BadRequestException('Verification code expired or not found — request a new one');
+    }
+
+    if (user.phoneVerificationAttempts >= VERIFICATION_CODE_MAX_ATTEMPTS) {
+      throw new BadRequestException('Too many attempts — request a new code');
+    }
+
+    const matches = await bcrypt.compare(dto.code, user.phoneVerificationCodeHash);
+    if (!matches) {
+      await this.prisma.user.update({
+        where: { id: userId },
+        data: { phoneVerificationAttempts: { increment: 1 } },
+      });
+      throw new BadRequestException('Invalid verification code');
+    }
+
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        phoneVerifiedAt: new Date(),
+        phoneVerificationCodeHash: null,
+        phoneVerificationCodeExpiresAt: null,
+        phoneVerificationAttempts: 0,
+      },
+    });
+
+    return { success: true };
+  }
+
+  async resendPhoneVerificationCode(userId: string) {
+    const user = await this.prisma.user.findUniqueOrThrow({ where: { id: userId } });
+
+    if (!user.phoneNumber) {
+      throw new BadRequestException('This account has no phone number to verify');
+    }
+    if (user.phoneVerifiedAt) {
+      throw new BadRequestException('Phone number already verified');
+    }
+    if (!user.passwordHash) {
+      throw new BadRequestException('This account does not require phone verification');
+    }
+
+    await this.issuePhoneVerificationCode(user);
     return { success: true };
   }
 
@@ -449,7 +541,19 @@ export class AuthService {
     throw new ConflictException('Email already in use');
   }
 
-  private async issueVerificationCode(user: User): Promise<void> {
+  // Mirrors assertEmailAvailableForClassicRegistration above, minus the
+  // Google-account conflict branch — a phone number is never a Google
+  // identity, so there's only one way for it to already be taken.
+  private async assertPhoneAvailableForRegistration(phone: string): Promise<void> {
+    const existing = await this.prisma.user.findFirst({ where: { phoneNumber: phone } });
+    if (existing) {
+      throw new ConflictException('Phone number already in use');
+    }
+  }
+
+  private async issueEmailVerificationCode(user: User): Promise<void> {
+    if (!user.email) return;
+
     const code = randomInt(100000, 1000000).toString();
     const codeHash = await bcrypt.hash(code, 10);
     const expiresAt = new Date(Date.now() + VERIFICATION_CODE_TTL_MINUTES * 60_000);
@@ -476,6 +580,35 @@ export class AuthService {
       })
       .catch((error) => {
         this.logger.error(`Failed to send verification code to ${user.email}: ${(error as Error).message}`);
+      });
+  }
+
+  // Mirrors issueEmailVerificationCode above — same TTL/attempts contract,
+  // separate columns (see phone-auth step 1 plan for why not a shared
+  // mechanism), SmsChannel instead of EmailChannel.
+  private async issuePhoneVerificationCode(user: User): Promise<void> {
+    if (!user.phoneNumber) return;
+
+    const code = randomInt(100000, 1000000).toString();
+    const codeHash = await bcrypt.hash(code, 10);
+    const expiresAt = new Date(Date.now() + VERIFICATION_CODE_TTL_MINUTES * 60_000);
+
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: {
+        phoneVerificationCodeHash: codeHash,
+        phoneVerificationCodeExpiresAt: expiresAt,
+        phoneVerificationAttempts: 0,
+      },
+    });
+
+    this.smsChannel
+      .send({
+        to: user.phoneNumber,
+        text: `Votre code de vérification Zen Events est : ${code}. Il expire dans ${VERIFICATION_CODE_TTL_MINUTES} minutes.`,
+      })
+      .catch((error) => {
+        this.logger.error(`Failed to send phone verification code to ${user.phoneNumber}: ${(error as Error).message}`);
       });
   }
 
@@ -510,7 +643,8 @@ export class AuthService {
   // including the just-committed row) and retrying resolves that race
   // instead of surfacing a false conflict to a legitimate registration.
   private async createOrganizerAccountAutoNamed(data: {
-    email: string;
+    email?: string;
+    phoneNumber?: string;
     fullName: string;
     passwordHash?: string;
     googleId?: string;
@@ -534,7 +668,8 @@ export class AuthService {
   }
 
   private async createOrganizerAccount(data: {
-    email: string;
+    email?: string;
+    phoneNumber?: string;
     fullName: string;
     organizationName: string;
     organizationSlug: string;
@@ -548,6 +683,7 @@ export class AuthService {
       const user = await tx.user.create({
         data: {
           email: data.email,
+          phoneNumber: data.phoneNumber,
           fullName: data.fullName,
           passwordHash: data.passwordHash,
           googleId: data.googleId,
@@ -607,6 +743,9 @@ export class AuthService {
       emailVerificationCodeHash,
       emailVerificationCodeExpiresAt,
       emailVerificationAttempts,
+      phoneVerificationCodeHash,
+      phoneVerificationCodeExpiresAt,
+      phoneVerificationAttempts,
       totpSecret,
       totpEnabledAt,
       totpRecoveryCodeHashes,
@@ -662,12 +801,17 @@ export class AuthService {
   }
 
   private notifySuperAdminLogin(user: User, meta: SuperAdminLoginMeta): void {
+    // Super Admin accounts are always email + password + TOTP (never phone
+    // — see docs/SPEC.md §10.7), so this is never actually reachable with a
+    // null email; guarded only for the type narrowing EmailChannel.send needs.
+    if (!user.email) return;
+
     const details = [meta.ip ? `IP : ${meta.ip}` : null, meta.userAgent ? `Appareil : ${meta.userAgent}` : null]
       .filter(Boolean)
       .join(' — ');
 
-    // Fire-and-forget, same stance as issueVerificationCode — never blocks
-    // the login response, never a real send under NODE_ENV=test.
+    // Fire-and-forget, same stance as issueEmailVerificationCode — never
+    // blocks the login response, never a real send under NODE_ENV=test.
     this.emailChannel
       .send({
         to: user.email,

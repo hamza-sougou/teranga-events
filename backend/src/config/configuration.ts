@@ -30,6 +30,11 @@ export default () => ({
     password: process.env.SMTP_PASSWORD,
     fromEmail: process.env.SMTP_FROM_EMAIL,
   },
+  twilio: {
+    accountSid: process.env.TWILIO_ACCOUNT_SID,
+    authToken: process.env.TWILIO_AUTH_TOKEN,
+    fromNumber: process.env.TWILIO_FROM_NUMBER,
+  },
   frontendUrl: process.env.FRONTEND_URL,
   // Comma-separated allow-list — falls back to just FRONTEND_URL so a
   // fresh checkout of this repo (only FRONTEND_URL set) still has a

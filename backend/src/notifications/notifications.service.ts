@@ -146,7 +146,12 @@ export class NotificationsService {
     if (type === 'team_invitation') {
       if (!userId) return null;
       const user = await this.prisma.user.findUnique({ where: { id: userId } });
-      if (!user) return null;
+      // Team invitations are always email-based today (see teams.service.ts
+      // createPlaceholderUser) — phone-based invitations are step 2 of the
+      // phone-auth chantier (PROGRESS.md), not yet built. A null email here
+      // would mean this notification somehow targeted a phone-only account,
+      // which no code path currently creates.
+      if (!user || !user.email) return null;
 
       // Notifications rows have no generic metadata column to carry which
       // organization/role this was for — best-effort personalization via

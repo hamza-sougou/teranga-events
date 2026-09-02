@@ -5,11 +5,15 @@
 //     price >= 0, quantity_total > 0, end_at > start_at, sale_end > sale_start,
 //     total_amount >= 0, unit_price/subtotal >= 0, discount_value > 0,
 //     valid_until > valid_from, max_uses IS NULL OR uses_count <= max_uses,
-//     chk_users_auth_method: password_hash IS NOT NULL OR google_id IS NOT NULL,
+//     chk_users_auth_method: (email IS NOT NULL OR phone_number IS NOT NULL)
+//       AND (password_hash IS NOT NULL OR google_id IS NOT NULL),
 //     chk_orders_total_equals_parts: total_amount = subtotal_amount + service_fee_amount,
 //     subtotal_amount/service_fee_amount/amount_due >= 0,
 //     event_promotions: ends_at > starts_at)
 //   - the case-insensitive unique index on lower(users.email) (idx_users_email_lower)
+//   - the partial unique index on users.phone_number (idx_users_phone_number,
+//     WHERE phone_number IS NOT NULL — Prisma's @unique on a nullable column
+//     is not partial, so this stays hand-maintained too)
 //   - the two capacity triggers: fn_reserve_ticket_capacity (BEFORE INSERT ON
 //     tickets) and fn_release_ticket_capacity (AFTER UPDATE OF status ON tickets)
 //
@@ -208,19 +212,32 @@ enum PromotionType {
 
 model User {
   id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  email        String   @db.Text
+  // Nullable since phone-auth step 1 (PROGRESS.md) — a phone-only account
+  // has no email. chk_users_auth_method (db/schema.sql, not expressible
+  // here) enforces "email OR phoneNumber, always at least one".
+  email        String?  @db.Text
+  // Generic contact field, unrelated to auth — never used as a login
+  // identifier, never verified. Distinct from phoneNumber below.
   phone        String?  @db.VarChar(20)
+  // Auth identifier (E.164), mirrors email's role — see chk_users_auth_method.
+  phoneNumber  String?  @unique(map: "idx_users_phone_number") @map("phone_number") @db.VarChar(20)
   passwordHash String?  @map("password_hash") @db.Text
   googleId     String?  @unique @map("google_id") @db.Text
   fullName     String   @map("full_name") @db.VarChar(150)
   isSuperAdmin Boolean  @default(false) @map("is_super_admin")
   isActive     Boolean  @default(true) @map("is_active")
   emailVerifiedAt DateTime? @map("email_verified_at") @db.Timestamptz(6)
+  phoneVerifiedAt DateTime? @map("phone_verified_at") @db.Timestamptz(6)
   termsAcceptedAt DateTime? @map("terms_accepted_at") @db.Timestamptz(6)
   marketingOptIn  Boolean   @default(false) @map("marketing_opt_in")
   emailVerificationCodeHash      String?   @map("email_verification_code_hash") @db.Text
   emailVerificationCodeExpiresAt DateTime? @map("email_verification_code_expires_at") @db.Timestamptz(6)
   emailVerificationAttempts      Int       @default(0) @map("email_verification_attempts")
+  // Phone verification — mirrors the email columns above (same "single
+  // active code, no history" reasoning, see db/schema.sql).
+  phoneVerificationCodeHash      String?   @map("phone_verification_code_hash") @db.Text
+  phoneVerificationCodeExpiresAt DateTime? @map("phone_verification_code_expires_at") @db.Timestamptz(6)
+  phoneVerificationAttempts      Int       @default(0) @map("phone_verification_attempts")
   // 2FA TOTP (Super Admin uniquement — voir docs/SPEC.md §10.7). totpEnabledAt
   // null + totpSecret set = configuration en cours, pas encore vérifiée.
   // CHECK (totp_secret IS NOT NULL OR totp_enabled_at IS NULL) —

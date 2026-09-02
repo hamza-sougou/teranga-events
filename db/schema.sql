@@ -78,16 +78,24 @@ CREATE TYPE payout_status AS ENUM ('pending', 'processing', 'paid', 'failed');
 -- de codes à conserver). email_verification_attempts plafonne le bruteforce
 -- d'un code à 6 chiffres ; au-delà de la limite applicative, le code est
 -- traité comme invalidé jusqu'à un renvoi (voir AuthService).
+-- phone_number (E.164, ex: +221771234567) est l'identifiant d'authentification
+-- téléphone — colonne dédiée, distincte de `phone` ci-dessous qui reste un
+-- champ de contact générique sans rapport avec l'auth (jamais utilisé comme
+-- identifiant de connexion, jamais vérifié). Vérification téléphone : même
+-- principe qu'email_verified_at plus bas (un seul code actif à la fois,
+-- colonnes directement sur users, pas de table séparée — voir AuthService).
 CREATE TABLE users (
   id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  email           TEXT NOT NULL,
+  email           TEXT,
   phone           VARCHAR(20),
+  phone_number    VARCHAR(20),
   password_hash   TEXT,
   google_id       TEXT UNIQUE,
   full_name       VARCHAR(150) NOT NULL,
   is_super_admin  BOOLEAN NOT NULL DEFAULT FALSE,
   is_active       BOOLEAN NOT NULL DEFAULT TRUE,
   email_verified_at    TIMESTAMPTZ,
+  phone_verified_at    TIMESTAMPTZ,
   -- Preuve d'acceptation CGU : un horodatage, pas juste un booléen — c'est la
   -- preuve de consentement à conserver. Jamais rétro-rempli pour les comptes
   -- créés avant l'existence de ce mécanisme (voir migration add_email_verification)
@@ -99,6 +107,9 @@ CREATE TABLE users (
   email_verification_code_hash          TEXT,
   email_verification_code_expires_at    TIMESTAMPTZ,
   email_verification_attempts           INTEGER NOT NULL DEFAULT 0,
+  phone_verification_code_hash          TEXT,
+  phone_verification_code_expires_at    TIMESTAMPTZ,
+  phone_verification_attempts           INTEGER NOT NULL DEFAULT 0,
   -- 2FA TOTP (Super Admin uniquement, obligatoire pour ce rôle — voir
   -- docs/SPEC.md §10.7). totp_secret est posé dès l'étape de configuration,
   -- avant toute vérification réussie ; totp_enabled_at ne l'est qu'après un
@@ -120,11 +131,18 @@ CREATE TABLE users (
   created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
 
-  CONSTRAINT chk_users_auth_method CHECK (password_hash IS NOT NULL OR google_id IS NOT NULL),
+  -- Étendu pour l'auth téléphone (étape 1/5, voir PROGRESS.md) : un compte a
+  -- email OU phone_number OU les deux, jamais aucun des deux — extension de
+  -- la même contrainte plutôt qu'un second CHECK séparé.
+  CONSTRAINT chk_users_auth_method CHECK (
+    (email IS NOT NULL OR phone_number IS NOT NULL)
+    AND (password_hash IS NOT NULL OR google_id IS NOT NULL)
+  ),
   CONSTRAINT chk_users_totp_enabled_requires_secret CHECK (totp_secret IS NOT NULL OR totp_enabled_at IS NULL)
 );
 
 CREATE UNIQUE INDEX idx_users_email_lower ON users (lower(email));
+CREATE UNIQUE INDEX idx_users_phone_number ON users (phone_number) WHERE phone_number IS NOT NULL;
 
 
 -- ============================================================
