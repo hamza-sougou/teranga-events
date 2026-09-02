@@ -4,6 +4,8 @@ import { ConfigService } from '@nestjs/config';
 import { Throttle } from '@nestjs/throttler';
 import { Request, Response } from 'express';
 import { AuthService } from './auth.service';
+import { ActivateInvitationDto } from './dto/activate-invitation.dto';
+import { ResendActivationDto } from './dto/resend-activation.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { CompleteGoogleSignupDto } from './dto/complete-google-signup.dto';
 import { GooglePendingTokenDto } from './dto/google-pending-token.dto';
@@ -54,6 +56,21 @@ export class AuthController {
       ip: req.ip,
       userAgent: typeof userAgent === 'string' ? userAgent : undefined,
     });
+  }
+
+  // Public — a team-invite placeholder account (TeamsService) has no usable
+  // password yet, so it cannot reach a JWT-guarded endpoint. See
+  // AuthService.activateInvitation.
+  @Post('activate-invitation')
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  activateInvitation(@Body() dto: ActivateInvitationDto) {
+    return this.authService.activateInvitation(dto);
+  }
+
+  @Post('activate-invitation/resend')
+  @Throttle({ default: { limit: 3, ttl: 300_000 } })
+  resendInvitationActivationCode(@Body() dto: ResendActivationDto) {
+    return this.authService.resendInvitationActivationCode(dto);
   }
 
   @Get('me')

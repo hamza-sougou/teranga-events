@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { OrderStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { AuthService } from '../auth/auth.service';
 import { UpdateOrganizationDto } from './dto/update-organization.dto';
 
 const PROFILE_SELECT = {
@@ -32,13 +33,25 @@ const ADMIN_MEMBER_INCLUDE = {
 
 @Injectable()
 export class OrganizationsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly authService: AuthService,
+  ) {}
 
   findOne(organizationId: string) {
     return this.prisma.organization.findUniqueOrThrow({
       where: { id: organizationId },
       select: PROFILE_SELECT,
     });
+  }
+
+  // Point C (phone-auth step 2/5, PROGRESS.md): an already-authenticated
+  // user creates an additional organization they own — see
+  // AuthService.provisionOrganizationForUser for why this isn't a variant
+  // of /auth/register.
+  async createForUser(userId: string) {
+    const organization = await this.authService.provisionOrganizationForUser(userId);
+    return this.findOne(organization.id);
   }
 
   updateProfile(organizationId: string, dto: UpdateOrganizationDto) {

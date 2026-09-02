@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation';
 import { useCurrentUser } from '@/hooks/use-current-user';
 import { Sidebar } from '@/components/dashboard/sidebar';
 import { EmailVerificationBanner } from '@/components/auth/email-verification-banner';
+import { PhoneVerificationBanner } from '@/components/auth/phone-verification-banner';
+import { PendingInvitationsBanner } from '@/components/dashboard/pending-invitations-banner';
 import type { MemberRole } from '@/types';
 
 const ROLE_LABELS: Record<MemberRole, string> = {
@@ -32,12 +34,24 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   }
 
   if (!activeMembership) {
-    // Extremely unlikely in practice — every registered account gets an
-    // OWNER membership at signup — but fail loud rather than render a
-    // dashboard with no organization to scope its data to.
+    // No longer just the "extremely unlikely" case the original comment
+    // described (every registered account gets an OWNER membership at
+    // signup) — a freshly-activated invitee (POST /auth/activate-invitation,
+    // phone-auth step 4/5, PROGRESS.md) also lands here on first redirect:
+    // activation only sets a password, it deliberately never auto-accepts
+    // the membership itself, so it's still PENDING. Without this, that
+    // person would be stranded on a dead-end message with no way to accept.
     return (
-      <div className="flex min-h-screen items-center justify-center bg-bg px-6 text-center text-sm text-text-muted">
-        Aucune organisation active n&apos;est associée à ce compte.
+      <div className="flex min-h-screen items-center justify-center bg-bg px-6 text-center">
+        <div className="w-full max-w-[480px]">
+          <PendingInvitationsBanner
+            emptyFallback={
+              <p className="text-sm text-text-muted">
+                Aucune organisation active n&apos;est associée à ce compte.
+              </p>
+            }
+          />
+        </div>
       </div>
     );
   }
@@ -50,6 +64,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       />
       <div>
         <EmailVerificationBanner user={data} />
+        <PhoneVerificationBanner user={data} />
+        <PendingInvitationsBanner />
         {children}
       </div>
     </div>

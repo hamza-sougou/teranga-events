@@ -24,7 +24,7 @@ interface Member {
   id: string;
   role: MemberRole;
   status: MemberStatus;
-  user: { id: string; fullName: string; email: string };
+  user: { id: string; fullName: string; email: string | null; phoneNumber: string | null };
 }
 
 export default function TeamPage() {
@@ -121,7 +121,9 @@ export default function TeamPage() {
                         <Avatar name={member.user.fullName} />
                         <div>
                           <div className="font-bold">{member.user.fullName}</div>
-                          <div className="text-[11px] text-text-muted">{member.user.email}</div>
+                          <div className="text-[11px] text-text-muted">
+                            {member.user.email ?? member.user.phoneNumber}
+                          </div>
                         </div>
                       </div>
                     </td>

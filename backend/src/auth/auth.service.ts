@@ -7,6 +7,8 @@ import { generateSecret, generateURI, verify as verifyTotp } from 'otplib';
 import { PrismaService } from '../prisma/prisma.service';
 import { EmailChannel } from '../notifications/channels/email.channel';
 import { SmsChannel } from '../notifications/channels/sms.channel';
+import { ActivateInvitationDto } from './dto/activate-invitation.dto';
+import { ResendActivationDto } from './dto/resend-activation.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { CompleteGoogleSignupDto } from './dto/complete-google-signup.dto';
 import { LoginDto } from './dto/login.dto';
@@ -496,7 +498,16 @@ export class AuthService {
       include: { organization: { select: { id: true, name: true, slug: true, isVerified: true } } },
     });
 
-    return { ...this.sanitizeUser(user), hasPassword: !!user.passwordHash, memberships };
+    // Both must hold: passwordHash alone is true for a team-invite
+    // placeholder (TeamsService) whose hash is an unusable random value the
+    // user never set (see migration add_invitation_activation); passwordSet
+    // alone defaults true for a Google-only account, which has no
+    // passwordHash at all.
+    return {
+      ...this.sanitizeUser(user),
+      hasPassword: user.passwordSet && !!user.passwordHash,
+      memberships,
+    };
   }
 
   async changePassword(userId: string, dto: ChangePasswordDto) {
@@ -551,9 +562,11 @@ export class AuthService {
     }
   }
 
-  private async issueEmailVerificationCode(user: User): Promise<void> {
-    if (!user.email) return;
-
+  // Generates + hashes + stores a fresh 6-digit code on the email
+  // verification columns and returns the raw code — split out from
+  // issueEmailVerificationCode so issueInvitationActivationCode (different
+  // message, same columns) doesn't duplicate the generation/storage half.
+  private async storeEmailVerificationCode(user: User): Promise<string> {
     const code = randomInt(100000, 1000000).toString();
     const codeHash = await bcrypt.hash(code, 10);
     const expiresAt = new Date(Date.now() + VERIFICATION_CODE_TTL_MINUTES * 60_000);
@@ -566,6 +579,32 @@ export class AuthService {
         emailVerificationAttempts: 0,
       },
     });
+
+    return code;
+  }
+
+  // Mirrors storeEmailVerificationCode above — separate columns (see
+  // phone-auth step 1 plan for why not a shared mechanism).
+  private async storePhoneVerificationCode(user: User): Promise<string> {
+    const code = randomInt(100000, 1000000).toString();
+    const codeHash = await bcrypt.hash(code, 10);
+    const expiresAt = new Date(Date.now() + VERIFICATION_CODE_TTL_MINUTES * 60_000);
+
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: {
+        phoneVerificationCodeHash: codeHash,
+        phoneVerificationCodeExpiresAt: expiresAt,
+        phoneVerificationAttempts: 0,
+      },
+    });
+
+    return code;
+  }
+
+  private async issueEmailVerificationCode(user: User): Promise<void> {
+    if (!user.email) return;
+    const code = await this.storeEmailVerificationCode(user);
 
     // Fire-and-forget: the same "never block the critical path on an
     // external channel" stance as NotificationsService, but bypassing its
@@ -583,24 +622,9 @@ export class AuthService {
       });
   }
 
-  // Mirrors issueEmailVerificationCode above — same TTL/attempts contract,
-  // separate columns (see phone-auth step 1 plan for why not a shared
-  // mechanism), SmsChannel instead of EmailChannel.
   private async issuePhoneVerificationCode(user: User): Promise<void> {
     if (!user.phoneNumber) return;
-
-    const code = randomInt(100000, 1000000).toString();
-    const codeHash = await bcrypt.hash(code, 10);
-    const expiresAt = new Date(Date.now() + VERIFICATION_CODE_TTL_MINUTES * 60_000);
-
-    await this.prisma.user.update({
-      where: { id: user.id },
-      data: {
-        phoneVerificationCodeHash: codeHash,
-        phoneVerificationCodeExpiresAt: expiresAt,
-        phoneVerificationAttempts: 0,
-      },
-    });
+    const code = await this.storePhoneVerificationCode(user);
 
     this.smsChannel
       .send({
@@ -610,6 +634,150 @@ export class AuthService {
       .catch((error) => {
         this.logger.error(`Failed to send phone verification code to ${user.phoneNumber}: ${(error as Error).message}`);
       });
+  }
+
+  // Phone-auth step 2/5 (team invitations, PROGRESS.md). Called by
+  // TeamsService right after a fresh placeholder user is created (or
+  // re-invited before ever activating) — reuses the exact same
+  // email/phone-verification columns and TTL/attempts contract as
+  // registration's own codes (same "prove possession of the channel"
+  // semantics), just with invitation wording and no second token system.
+  // Only one of user.email/user.phoneNumber is ever set for a placeholder
+  // (whichever channel the invite used), so exactly one branch fires.
+  async issueInvitationActivationCode(user: User, organizationName: string, role: string): Promise<void> {
+    const roleLabel = role.toLowerCase();
+
+    if (user.email) {
+      const code = await this.storeEmailVerificationCode(user);
+      this.emailChannel
+        .send({
+          to: user.email,
+          subject: `Invitation à rejoindre ${organizationName} — Zen Events`,
+          text:
+            `Vous avez été invité(e) à rejoindre "${organizationName}" en tant que ${roleLabel} sur Zen Events. ` +
+            `Utilisez ce code pour activer votre compte et choisir votre mot de passe : ${code}. ` +
+            `Il expire dans ${VERIFICATION_CODE_TTL_MINUTES} minutes.`,
+        })
+        .catch((error) => {
+          this.logger.error(`Failed to send invitation activation code to ${user.email}: ${(error as Error).message}`);
+        });
+      return;
+    }
+
+    if (user.phoneNumber) {
+      const code = await this.storePhoneVerificationCode(user);
+      this.smsChannel
+        .send({
+          to: user.phoneNumber,
+          text:
+            `Zen Events : invitation à rejoindre "${organizationName}" (${roleLabel}). ` +
+            `Code d'activation : ${code}. Expire dans ${VERIFICATION_CODE_TTL_MINUTES} minutes.`,
+        })
+        .catch((error) => {
+          this.logger.error(
+            `Failed to send invitation activation code to ${user.phoneNumber}: ${(error as Error).message}`,
+          );
+        });
+    }
+  }
+
+  // Public (no session possible yet — that's the whole gap this closes).
+  // Consumes the same code issued by issueInvitationActivationCode above.
+  // Gated on passwordSet === false so this can never double as an
+  // unauthenticated password reset on a real account (see migration
+  // add_invitation_activation). Deliberately does NOT accept/decline the
+  // membership itself — that stays a separate step via the existing
+  // /users/me/invitations/:id/accept, now finally reachable since this
+  // endpoint hands back a usable session — same decoupling as the Google
+  // signup flow, and correct if the invitee has more than one pending
+  // invitation waiting.
+  async activateInvitation(dto: ActivateInvitationDto) {
+    if (dto.password !== dto.passwordConfirmation) {
+      throw new BadRequestException('Passwords do not match');
+    }
+
+    const user = dto.email
+      ? await this.prisma.user.findFirst({ where: { email: { equals: dto.email, mode: 'insensitive' } } })
+      : await this.prisma.user.findFirst({ where: { phoneNumber: dto.phone } });
+
+    // Same generic message whether the account doesn't exist or is already
+    // a real (non-placeholder) account — never confirms which, to avoid
+    // account enumeration on a public endpoint.
+    if (!user || user.passwordSet) {
+      throw new BadRequestException('Invalid or expired activation code');
+    }
+
+    const isEmailChannel = !!dto.email;
+    const codeHash = isEmailChannel ? user.emailVerificationCodeHash : user.phoneVerificationCodeHash;
+    const codeExpiresAt = isEmailChannel ? user.emailVerificationCodeExpiresAt : user.phoneVerificationCodeExpiresAt;
+    const attempts = isEmailChannel ? user.emailVerificationAttempts : user.phoneVerificationAttempts;
+
+    if (!codeHash || !codeExpiresAt || codeExpiresAt.getTime() < Date.now()) {
+      throw new BadRequestException('Invalid or expired activation code');
+    }
+    if (attempts >= VERIFICATION_CODE_MAX_ATTEMPTS) {
+      throw new BadRequestException('Too many attempts — ask to be re-invited for a new code');
+    }
+
+    const matches = await bcrypt.compare(dto.code, codeHash);
+    if (!matches) {
+      await this.prisma.user.update({
+        where: { id: user.id },
+        data: isEmailChannel
+          ? { emailVerificationAttempts: { increment: 1 } }
+          : { phoneVerificationAttempts: { increment: 1 } },
+      });
+      throw new BadRequestException('Invalid or expired activation code');
+    }
+
+    const passwordHash = await bcrypt.hash(dto.password, 10);
+    const now = new Date();
+    const updated = await this.prisma.user.update({
+      where: { id: user.id },
+      data: {
+        passwordHash,
+        passwordSet: true,
+        ...(isEmailChannel
+          ? {
+              emailVerifiedAt: now,
+              emailVerificationCodeHash: null,
+              emailVerificationCodeExpiresAt: null,
+              emailVerificationAttempts: 0,
+            }
+          : {
+              phoneVerifiedAt: now,
+              phoneVerificationCodeHash: null,
+              phoneVerificationCodeExpiresAt: null,
+              phoneVerificationAttempts: 0,
+            }),
+      },
+    });
+
+    return this.buildAuthResponse(updated);
+  }
+
+  // Always returns the same generic response, whether or not the account
+  // exists / is already activated — this endpoint is unauthenticated
+  // (unlike verify-email/resend and verify-phone/resend, which are
+  // JWT-guarded), so a distinguishable response would let it be used to
+  // enumerate accounts.
+  async resendInvitationActivationCode(dto: ResendActivationDto): Promise<{ success: true }> {
+    const user = dto.email
+      ? await this.prisma.user.findFirst({ where: { email: { equals: dto.email, mode: 'insensitive' } } })
+      : await this.prisma.user.findFirst({ where: { phoneNumber: dto.phone } });
+
+    if (user && !user.passwordSet) {
+      const membership = await this.prisma.organizationMember.findFirst({
+        where: { userId: user.id, status: MemberStatus.PENDING },
+        orderBy: { createdAt: 'desc' },
+        include: { organization: true },
+      });
+      if (membership) {
+        await this.issueInvitationActivationCode(user, membership.organization.name, membership.role);
+      }
+    }
+
+    return { success: true };
   }
 
   private decodeGooglePendingToken(token: string): GooglePendingTokenPayload {
@@ -634,14 +802,34 @@ export class AuthService {
     return `Organisation de ${firstName}`;
   }
 
-  // Every caller here auto-names the organization from fullName — never a
-  // form field (see docs/SPEC.md). Retries the slug once on a unique-
-  // constraint conflict: the base slug ("amadou-ba") is shared by every
-  // user with the same first name, so two concurrent registrations can
-  // both pass generateUniqueOrganizationSlug's read-then-decide check
-  // before either has committed. Regenerating (which re-reads the DB, now
-  // including the just-committed row) and retrying resolves that race
-  // instead of surfacing a false conflict to a legitimate registration.
+  // Shared by every caller that auto-names + auto-slugs an organization
+  // (never a form field, see docs/SPEC.md): registration, Google signup,
+  // and provisionOrganizationForUser below (phone-auth step 2/5). Retries
+  // the slug once on a unique-constraint conflict: the base slug
+  // ("amadou-ba") is shared by every user with the same first name, so two
+  // concurrent calls can both pass generateUniqueOrganizationSlug's
+  // read-then-decide check before either has committed. Regenerating (which
+  // re-reads the DB, now including the just-committed row) and retrying
+  // resolves that race instead of surfacing a false conflict.
+  private async createOrganizationWithRetry<T>(
+    seedName: string,
+    createFn: (organizationName: string, organizationSlug: string) => Promise<T>,
+  ): Promise<T> {
+    const organizationName = this.buildAutoOrganizationName(seedName);
+
+    for (let attempt = 0; ; attempt++) {
+      const organizationSlug = await this.generateUniqueOrganizationSlug(seedName);
+      try {
+        return await createFn(organizationName, organizationSlug);
+      } catch (error) {
+        if (attempt === 0 && error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+          continue;
+        }
+        throw error;
+      }
+    }
+  }
+
   private async createOrganizerAccountAutoNamed(data: {
     email?: string;
     phoneNumber?: string;
@@ -652,19 +840,39 @@ export class AuthService {
     termsAcceptedAt?: Date;
     emailVerifiedAt?: Date;
   }): Promise<User> {
-    const organizationName = this.buildAutoOrganizationName(data.fullName);
+    return this.createOrganizationWithRetry(data.fullName, (organizationName, organizationSlug) =>
+      this.createOrganizerAccount({ ...data, organizationName, organizationSlug }),
+    );
+  }
 
-    for (let attempt = 0; ; attempt++) {
-      const organizationSlug = await this.generateUniqueOrganizationSlug(data.fullName);
-      try {
-        return await this.createOrganizerAccount({ ...data, organizationName, organizationSlug });
-      } catch (error) {
-        if (attempt === 0 && error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
-          continue;
-        }
-        throw error;
-      }
-    }
+  // Point C (phone-auth step 2/5, PROGRESS.md): lets an already-authenticated
+  // user (e.g. invited elsewhere as CONTROLLER) create and own a brand new
+  // organization without going through /auth/register, which would fail on
+  // their already-used email/phone. Reuses createOrganizationWithRetry —
+  // same auto-naming convention, same slug-conflict retry, zero duplicated
+  // logic. Nothing in the schema limits a user to a single OWNER
+  // organization (organizations.owner_user_id has no UNIQUE constraint,
+  // verified in db/schema.sql), so this simply adds another organization +
+  // OWNER membership row alongside whatever memberships the user already has.
+  async provisionOrganizationForUser(userId: string) {
+    const user = await this.prisma.user.findUniqueOrThrow({ where: { id: userId } });
+
+    return this.createOrganizationWithRetry(user.fullName, (organizationName, organizationSlug) =>
+      this.prisma.$transaction(async (tx) => {
+        const organization = await tx.organization.create({
+          data: { name: organizationName, slug: organizationSlug, ownerUserId: user.id },
+        });
+        await tx.organizationMember.create({
+          data: {
+            organizationId: organization.id,
+            userId: user.id,
+            role: MemberRole.OWNER,
+            status: MemberStatus.ACTIVE,
+          },
+        });
+        return organization;
+      }),
+    );
   }
 
   private async createOrganizerAccount(data: {

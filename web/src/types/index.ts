@@ -105,7 +105,11 @@ export interface Membership {
 
 export interface CurrentUser {
   id: string;
-  email: string;
+  // Nullable since phone-auth step 1 (PROGRESS.md) — a phone-only account
+  // has no email. Exactly one of email/phoneNumber is set in practice today
+  // (RegisterDto/LoginDto enforce it), though the DB CHECK tolerates both.
+  email: string | null;
+  phoneNumber: string | null;
   fullName: string;
   isSuperAdmin: boolean;
   isActive: boolean;
@@ -114,9 +118,11 @@ export interface CurrentUser {
   hasPassword: boolean;
   // null for an unverified classic account, or one whose verification is
   // still pending. Always set for a Google account (Google already proved
-  // email ownership at signup) — never gates login, see
-  // EmailVerificationBanner.
+  // email ownership at signup) — never gates login, see VerificationBanner.
   emailVerifiedAt: string | null;
+  // Mirrors emailVerifiedAt for the phone channel — never set via Google
+  // (phone is never a Google identity).
+  phoneVerifiedAt: string | null;
   memberships: Membership[];
 }
 

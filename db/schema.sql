@@ -90,6 +90,13 @@ CREATE TABLE users (
   phone           VARCHAR(20),
   phone_number    VARCHAR(20),
   password_hash   TEXT,
+  -- TRUE pour tout compte réel (mot de passe ou identité Google). FALSE
+  -- uniquement pour un placeholder d'invitation d'équipe (TeamsService,
+  -- étape 2/5 auth téléphone) dont password_hash est une valeur aléatoire
+  -- inutilisable — c'est ce marqueur, pas password_hash, qui protège
+  -- POST /auth/activate-invitation d'un détournement en reset de mot de
+  -- passe non authentifié sur un vrai compte.
+  password_set    BOOLEAN NOT NULL DEFAULT TRUE,
   google_id       TEXT UNIQUE,
   full_name       VARCHAR(150) NOT NULL,
   is_super_admin  BOOLEAN NOT NULL DEFAULT FALSE,

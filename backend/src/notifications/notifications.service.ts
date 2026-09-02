@@ -56,10 +56,19 @@ export class NotificationsService {
     const membership = await this.prisma.organizationMember.findUnique({ where: { id: membershipId } });
     if (!membership) return;
 
+    const user = await this.prisma.user.findUnique({ where: { id: membership.userId } });
+    if (!user) return;
+
+    // Phone-auth step 2/5 (PROGRESS.md): a phone-only invitee has no email
+    // to reach — mirrors TeamsService's own "email if present, else phone"
+    // channel choice for the immediate activation code.
+    const channel = user.email ? NotificationChannel.EMAIL : NotificationChannel.SMS;
+    if (channel === NotificationChannel.SMS && !user.phoneNumber) return;
+
     await this.prisma.notification.create({
       data: {
         userId: membership.userId,
-        channel: NotificationChannel.EMAIL,
+        channel,
         type: 'team_invitation',
       },
     });
@@ -146,12 +155,7 @@ export class NotificationsService {
     if (type === 'team_invitation') {
       if (!userId) return null;
       const user = await this.prisma.user.findUnique({ where: { id: userId } });
-      // Team invitations are always email-based today (see teams.service.ts
-      // createPlaceholderUser) — phone-based invitations are step 2 of the
-      // phone-auth chantier (PROGRESS.md), not yet built. A null email here
-      // would mean this notification somehow targeted a phone-only account,
-      // which no code path currently creates.
-      if (!user || !user.email) return null;
+      if (!user) return null;
 
       // Notifications rows have no generic metadata column to carry which
       // organization/role this was for — best-effort personalization via
@@ -167,11 +171,31 @@ export class NotificationsService {
         ? ` pour rejoindre "${membership.organization.name}" en tant que ${membership.role.toLowerCase()}`
         : '';
 
-      return {
-        to: user.email,
-        subject: 'Invitation à rejoindre une équipe sur Zen Events',
-        text: `Vous avez été invité(e)${context} sur Zen Events. Connectez-vous avec Google avec cette adresse (${user.email}) pour l'accepter.`,
-      };
+      // A placeholder account (passwordSet: false) already got a separate,
+      // immediate activation code from AuthService.issueInvitationActivationCode
+      // — this (delayed, batch-dispatched) notification just points them at
+      // it. A real account (passwordSet: true) already has a way in.
+      const callToAction = user.passwordSet
+        ? "Connectez-vous sur Zen Events pour l'accepter."
+        : "Utilisez le code d'activation que nous venons de vous envoyer pour créer votre mot de passe et l'accepter.";
+
+      if (user.email) {
+        return {
+          to: user.email,
+          subject: 'Invitation à rejoindre une équipe sur Zen Events',
+          text: `Vous avez été invité(e)${context} sur Zen Events. ${callToAction}`,
+        };
+      }
+
+      if (user.phoneNumber) {
+        return {
+          to: user.phoneNumber,
+          subject: 'Invitation à rejoindre une équipe sur Zen Events',
+          text: `Zen Events : vous avez été invité(e)${context}. ${callToAction}`,
+        };
+      }
+
+      return null;
     }
 
     return null;

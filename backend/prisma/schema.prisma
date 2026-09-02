@@ -222,6 +222,12 @@ model User {
   // Auth identifier (E.164), mirrors email's role — see chk_users_auth_method.
   phoneNumber  String?  @unique(map: "idx_users_phone_number") @map("phone_number") @db.VarChar(20)
   passwordHash String?  @map("password_hash") @db.Text
+  // TRUE for every real account (a real password or a Google identity).
+  // FALSE only for a team-invite placeholder (TeamsService.createPlaceholderUser)
+  // whose passwordHash is an unusable random value — the marker that gates
+  // POST /auth/activate-invitation so it can never double as an
+  // unauthenticated password reset on a real account.
+  passwordSet  Boolean  @default(true) @map("password_set")
   googleId     String?  @unique @map("google_id") @db.Text
   fullName     String   @map("full_name") @db.VarChar(150)
   isSuperAdmin Boolean  @default(false) @map("is_super_admin")

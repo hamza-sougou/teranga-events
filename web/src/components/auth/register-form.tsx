@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
@@ -10,21 +11,42 @@ import { isAxiosError } from 'axios';
 import { apiClient } from '@/lib/api-client';
 import { setToken } from '@/lib/auth';
 import { getApiErrorMessage } from '@/lib/api-errors';
+import { SENEGAL_PHONE_INPUT_MESSAGE, SENEGAL_PHONE_INPUT_REGEX } from '@/lib/phone';
 import { Input } from '@/components/ui/input';
 import { FormField } from '@/components/ui/form-field';
 import { Button, buttonClasses } from '@/components/ui/button';
 import { InlineBanner } from '@/components/ui/inline-banner';
 import { CheckboxField } from '@/components/ui/checkbox';
+import { IdentifierToggle, type IdentifierMode } from '@/components/auth/identifier-toggle';
 
-// Mirrors backend/src/auth/dto/register.dto.ts.
+// Mirrors backend/src/auth/dto/register.dto.ts — email?/phone? are both
+// optional here (validated conditionally below) since exactly one is
+// active depending on identifierMode, mirroring @ExactlyOneIdentifier.
 const registerSchema = z
   .object({
+    identifierMode: z.enum(['email', 'phone']),
     fullName: z.string().min(2, 'Le nom doit contenir au moins 2 caractères.'),
-    email: z.string().min(1, 'Email requis.').email('Adresse email invalide.'),
+    email: z.string().optional(),
+    phone: z.string().optional(),
     password: z.string().min(8, 'Le mot de passe doit contenir au moins 8 caractères.'),
     passwordConfirmation: z.string().min(8, 'Confirmation requise.'),
     marketingOptIn: z.boolean(),
     termsAccepted: z.boolean(),
+  })
+  .superRefine((data, ctx) => {
+    if (data.identifierMode === 'email') {
+      if (!data.email) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Email requis.', path: ['email'] });
+      } else if (!z.string().email().safeParse(data.email).success) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Adresse email invalide.', path: ['email'] });
+      }
+    } else {
+      if (!data.phone) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Numéro requis.', path: ['phone'] });
+      } else if (!SENEGAL_PHONE_INPUT_REGEX.test(data.phone)) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: SENEGAL_PHONE_INPUT_MESSAGE, path: ['phone'] });
+      }
+    }
   })
   .refine((data) => data.password === data.passwordConfirmation, {
     message: 'Les mots de passe ne correspondent pas.',
@@ -44,15 +66,20 @@ const GOOGLE_ACCOUNT_EXISTS_MESSAGE =
 export function RegisterForm() {
   const router = useRouter();
 
+  const [identifierMode, setIdentifierMode] = useState<IdentifierMode>('email');
+
   const {
     register,
     handleSubmit,
+    setValue,
     formState: { errors },
   } = useForm<RegisterFormValues>({
     resolver: zodResolver(registerSchema),
     defaultValues: {
+      identifierMode: 'email',
       fullName: '',
       email: '',
+      phone: '',
       password: '',
       passwordConfirmation: '',
       marketingOptIn: false,
@@ -60,11 +87,16 @@ export function RegisterForm() {
     },
   });
 
+  const handleIdentifierModeChange = (nextMode: IdentifierMode) => {
+    setIdentifierMode(nextMode);
+    setValue('identifierMode', nextMode);
+  };
+
   const mutation = useMutation({
     mutationFn: (values: RegisterFormValues) =>
       apiClient.post('/auth/register', {
         fullName: values.fullName,
-        email: values.email,
+        ...(values.identifierMode === 'email' ? { email: values.email } : { phone: values.phone }),
         password: values.password,
         passwordConfirmation: values.passwordConfirmation,
         marketingOptIn: values.marketingOptIn,
@@ -104,9 +136,23 @@ export function RegisterForm() {
           <Input id="register-full-name" invalid={!!errors.fullName} {...register('fullName')} />
         </FormField>
 
-        <FormField label="Email" htmlFor="register-email" required error={errors.email?.message}>
-          <Input id="register-email" type="email" invalid={!!errors.email} {...register('email')} />
-        </FormField>
+        <IdentifierToggle mode={identifierMode} onChange={handleIdentifierModeChange} />
+
+        {identifierMode === 'email' ? (
+          <FormField label="Email" htmlFor="register-email" required error={errors.email?.message}>
+            <Input id="register-email" type="email" invalid={!!errors.email} {...register('email')} />
+          </FormField>
+        ) : (
+          <FormField
+            label="Téléphone"
+            htmlFor="register-phone"
+            required
+            hint="Format : 7XXXXXXXX, 07XXXXXXXX ou +2217XXXXXXXX."
+            error={errors.phone?.message}
+          >
+            <Input id="register-phone" type="tel" invalid={!!errors.phone} {...register('phone')} />
+          </FormField>
+        )}
 
         <FormField label="Mot de passe" htmlFor="register-password" required error={errors.password?.message}>
           <Input id="register-password" type="password" invalid={!!errors.password} {...register('password')} />
