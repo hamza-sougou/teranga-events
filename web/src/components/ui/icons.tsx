@@ -34,6 +34,15 @@ import trendingUp from '@iconify-icons/lucide/trending-up';
 import checkCircle from '@iconify-icons/lucide/check-circle-2';
 import xCircle from '@iconify-icons/lucide/x-circle';
 import arrowLeft from '@iconify-icons/lucide/arrow-left';
+import creditCard from '@iconify-icons/lucide/credit-card';
+import facebook from '@iconify-icons/lucide/facebook';
+import instagram from '@iconify-icons/lucide/instagram';
+import phone from '@iconify-icons/lucide/phone';
+import users from '@iconify-icons/lucide/users';
+import qrCode from '@iconify-icons/lucide/qr-code';
+import smartphone from '@iconify-icons/lucide/smartphone';
+import clock from '@iconify-icons/lucide/clock';
+import layers from '@iconify-icons/lucide/layers';
 
 type IconProps = { className?: string };
 
@@ -163,4 +172,40 @@ export function XCircleIcon({ className }: IconProps) {
 
 export function ArrowLeftIcon({ className }: IconProps) {
   return <Icon icon={arrowLeft} className={className} />;
+}
+
+export function CreditCardIcon({ className }: IconProps) {
+  return <Icon icon={creditCard} className={className} />;
+}
+
+export function FacebookIcon({ className }: IconProps) {
+  return <Icon icon={facebook} className={className} />;
+}
+
+export function InstagramIcon({ className }: IconProps) {
+  return <Icon icon={instagram} className={className} />;
+}
+
+export function PhoneIcon({ className }: IconProps) {
+  return <Icon icon={phone} className={className} />;
+}
+
+export function UsersIcon({ className }: IconProps) {
+  return <Icon icon={users} className={className} />;
+}
+
+export function QrCodeIcon({ className }: IconProps) {
+  return <Icon icon={qrCode} className={className} />;
+}
+
+export function SmartphoneIcon({ className }: IconProps) {
+  return <Icon icon={smartphone} className={className} />;
+}
+
+export function ClockIcon({ className }: IconProps) {
+  return <Icon icon={clock} className={className} />;
+}
+
+export function LayersIcon({ className }: IconProps) {
+  return <Icon icon={layers} className={className} />;
 }

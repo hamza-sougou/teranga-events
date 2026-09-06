@@ -9,7 +9,6 @@ import { NearMeSection } from '@/components/public/near-me-section';
 import { RecentlyViewedSection } from '@/components/public/recently-viewed-section';
 import { CategoryGrid } from '@/components/public/category-grid';
 import { BecomeOrganizerBand } from '@/components/public/become-organizer-band';
-import { PublicFooter } from '@/components/public/public-footer';
 import { CalendarIcon, ZapIcon, FlameIcon, GiftIcon } from '@/components/ui/icons';
 import type { EventCardData } from '@/components/public/event-card';
 
@@ -91,7 +90,6 @@ export default function HomePage() {
 
       <CategoryGrid />
       <BecomeOrganizerBand />
-      <PublicFooter />
     </main>
   );
 }

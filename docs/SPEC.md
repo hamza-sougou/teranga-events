@@ -187,7 +187,7 @@ Mécanisme : appel à l'**API Déboursement (PUSH)** de PayDunya, qui transfère
 
 - **Phase 1 (MVP)** : auth multi-rôles, création d'évènement, génération tickets QR, vente via PayDunya (API PAR), reversement organisateur après évènement, scan basique, dashboard simple
 - **Phase 2** : gestion avancée des employés, statistiques détaillées, codes promo, mode offline du scan
-- **Phase 3** : app participant (wallet), revente sécurisée, pass saison, API publique, réévaluation de l'API PER PayDunya
+- **Phase 3** : app participant (wallet), transfert et revente encadrée de billet (voir §12), pass saison, API publique, réévaluation de l'API PER PayDunya
 - **Phase 4** : marque blanche, BI avancée, assurance annulation, détection de fraude par IA
 
 ---
@@ -289,9 +289,7 @@ différente de ceux déjà construits, pas une variante avec plus de droits.
 - Action de valider/rejeter, avec le minimum d'information nécessaire pour
   juger (contact, évènements déjà créés, historique de ventes).
 - Ce statut devient le point d'appui naturel pour restreindre toute future
-  fonctionnalité à fort risque de fraude (ex : génération de billets
-  imprimables pour vente physique — sujet mis de côté pour l'instant, voir
-  discussion à reprendre plus tard).
+  fonctionnalité à fort risque de fraude.
 
 ### 10.3 Modération
 
@@ -337,13 +335,13 @@ différente de ceux déjà construits, pas une variante avec plus de droits.
 documente le comportement réellement construit, pas seulement l'intention de
 départ.
 
-**Aucun formulaire séparé** — le compte Super Admin utilise la page `/login` 
-existante (email + mot de passe), pas une seconde surface à maintenir. La 
-distinction se fait après l'authentification, pas à l'entrée : le backend 
+**Aucun formulaire séparé** — le compte Super Admin utilise la page `/login`
+existante (email + mot de passe), pas une seconde surface à maintenir. La
+distinction se fait après l'authentification, pas à l'entrée : le backend
 vérifie `is_super_admin` et redirige vers `/admin` plutôt que `/dashboard`
 (la redirection frontend elle-même reste à construire — session dédiée à
-venir, `GET /auth/me` expose déjà `isSuperAdmin`). Aucune route/URL 
-"secrète" — l'obscurité d'URL n'est pas une protection réelle, et créerait 
+venir, `GET /auth/me` expose déjà `isSuperAdmin`). Aucune route/URL
+"secrète" — l'obscurité d'URL n'est pas une protection réelle, et créerait
 une cible identifiée plutôt qu'une barrière.
 
 **2FA (TOTP) obligatoire pour ce compte.** `POST /auth/login` ne délivre
@@ -429,3 +427,141 @@ tests e2e qui injectent `isSuperAdmin: true` dans le corps de `POST
 /auth/register` et `POST /auth/google/complete` : toujours `false` en base
 (le `ValidationPipe({ whitelist: true })` global supprime le champ avant
 même d'atteindre le DTO).
+
+## 11. Authentification par téléphone (organisateurs et équipe)
+
+**Statut : implémenté et vérifié en conditions réelles** (chantier en 5
+sessions, voir `PROGRESS.md`) — le téléphone est un identifiant d'auth
+complet au même titre que l'email, pour les organisateurs (auto-inscription)
+et les membres d'équipe (invitation), à l'exclusion du compte Super Admin
+(§10.7 ci-dessus, jamais de téléphone sur ce compte).
+
+**Un seul des deux canaux, jamais les deux, jamais aucun.** `RegisterDto`,
+`LoginDto`, `InviteMemberDto` et `ActivateInvitationDto` partagent tous le
+même validateur de classe `@ExactlyOneIdentifier()` : `email` XOR `phone`,
+exactement l'un des deux. Un compte a donc soit un email soit un numéro de
+téléphone comme identifiant de connexion — jamais les deux au moment de la
+création, et rien n'expose aujourd'hui de mécanisme pour ajouter le second
+identifiant à un compte existant (hors périmètre actuel).
+
+**Format E.164, normalisé côté DTO.** La saisie tolère `771234567`,
+`0771234567` ou `+221771234567` (`SENEGAL_PHONE_INPUT_REGEX`) et est
+systématiquement normalisée en `+221771234567` avant toute écriture en base
+ou tout envoi SMS (`normalizeSenegalPhone`, appliqué via `@Transform` dans le
+DTO — jamais dans le service). `users.phone_number` est distinct de
+`users.phone` (colonne de contact générique préexistante, sans lien avec
+l'authentification, jamais touchée par ce chantier).
+
+**Vérification unique par SMS, jamais un OTP à chaque connexion** — même
+principe que la vérification email : un code à 6 chiffres est envoyé une
+fois (à l'inscription, ou à l'activation d'une invitation), prouve la
+possession du numéro, puis la connexion se fait ensuite par mot de passe
+seul. Code haché (bcrypt), expire après 15 minutes, 5 tentatives maximum,
+throttle applicatif de 3 renvois / 5 minutes en plus du `@Throttle` par IP.
+Fournisseur SMS : Twilio (`backend/src/notifications/channels/sms.channel.ts`),
+dégradation gracieuse si `TWILIO_*` absent (comme `EmailChannel`/PayDunya),
+silencieux sous `NODE_ENV=test`.
+
+**Deux flux distincts, un seul mécanisme de code :**
+
+- **Organisateur (auto-inscription)** — `POST /auth/register` avec `phone`
+  au lieu de `email` crée directement un compte réel et déclenche l'envoi du
+  code de vérification. `POST /auth/verify-phone` (JWT requis, le compte
+  existe déjà) confirme le numéro et renseigne `phone_verified_at`.
+- **Membre d'équipe (invitation)** — `POST /organizations/:id/members` avec
+  `phone` crée un utilisateur placeholder (`password_set = false`) si aucun
+  compte n'existe déjà pour ce numéro, et déclenche l'envoi d'un code
+  d'activation par le même mécanisme que ci-dessus (`AuthService.
+issueInvitationActivationCode`, réutilise telles quelles les colonnes de
+  vérification téléphone — pas un second système de token). `POST
+/auth/activate-invitation` (public, sans session) consomme ce code et
+  fixe le mot de passe, ce qui délivre un JWT — mais n'accepte pas
+  l'adhésion à l'organisation elle-même, qui reste un appel séparé à `POST
+/users/me/invitations/:id/accept` (même découplage que le flux Google,
+  correct si plusieurs invitations sont en attente pour le même compte).
+  Si le numéro invité correspond à un compte déjà actif, aucun code n'est
+  émis : une notification SMS différée (`NotificationsService.
+notifyTeamInvitation`, table `notifications`, balayée par le cron chaque
+  minute) invite simplement à se connecter normalement pour accepter.
+
+**Vérifié en conditions réelles (session du 2026-09-02/03, vrai compte
+Twilio d'essai, vrai numéro sénégalais)** : inscription organisateur par
+téléphone avec réception réelle du SMS de vérification, connexion par
+téléphone + mot de passe, invitation d'un membre par téléphone avec
+réception réelle du code d'activation et de la notification d'invitation
+séparée, activation + acceptation d'invitation (`PENDING → ACTIVE`), RBAC
+du rôle invité, un même compte actif invité dans une deuxième organisation
+(notification "connectez-vous normalement" plutôt qu'un nouveau code),
+création d'une organisation propre depuis un compte déjà membre ailleurs
+(`POST /organizations`, avec retry de slug sur collision de nom réellement
+déclenché), et rejet d'une tentative de connexion par téléphone sur le
+compte Super Admin. Un échec de livraison Twilio ponctuel et transitoire
+(erreur opérateur générique 30008, hors de tout contrôle applicatif) a été
+observé sur un renvoi de code — un nouveau renvoi a livré normalement ;
+aucun code applicatif ne peut compenser ce type d'échec réseau côté
+opérateur, un nouveau `POST .../resend` suffit.
+
+## 12. Transfert et revente de billet (Phase 3 — décisions actées, non implémenté)
+
+**Statut : décisions produit actées avec l'utilisateur, aucun développement
+commencé.** Cette section documente le raisonnement retenu pour que la
+session qui construira cette fonctionnalité (Phase 3, voir section 7) n'ait
+pas à redécouvrir l'arbitrage. La vente de billets physiques/imprimés,
+explorée en parallèle, a été retirée du périmètre pour le moment (voir
+`PROGRESS.md` — sujet mis de côté, pas de solution technique retenue à ce
+stade).
+
+### 12.1 Deux fonctionnalités distinctes, à livrer dans cet ordre
+
+1. **Transfert de billet (gratuit)** — un participant qui ne peut plus
+   assister à un évènement donne son billet à une personne de son choix
+   (lien/code privé, pas de prix). Techniquement : réassignation du billet
+   à un autre compte + invalidation du QR chez l'ancien titulaire + nouveau
+   QR généré côté nouveau titulaire — se branche naturellement sur le motif
+   "billet vivant" déjà documenté dans `docs/DESIGN_SYSTEM.md` (QR rotatif,
+   pas encore implémenté côté backend). Couvre déjà l'essentiel du besoin
+   réel ("j'ai un empêchement"), zéro risque de scalping (pas de prix), zéro
+   nouveau flux de paiement — le vrai MVP de cette fonctionnalité.
+2. **Revente encadrée** (après le transfert) — mêmes mécanismes que le
+   transfert, avec un paiement associé, sous les contraintes strictes
+   détaillées en 12.2. Jamais un marché ouvert à prix libre — voir 12.3.
+
+### 12.2 Revente encadrée — règles retenues
+
+- **Prix plafonné au prix d'origine payé par le vendeur, jamais au-dessus.**
+  Élimine le scalping à la racine, sans mécanisme de contrôle a posteriori à
+  construire.
+- **Paiement médié par la plateforme, jamais un échange direct entre
+  particuliers.** L'acheteur paie via le flux PayDunya existant ; la
+  plateforme ne libère l'argent au vendeur qu'une fois le transfert de
+  billet confirmé côté serveur — opération atomique (paiement + transfert),
+  pas deux étapes indépendantes. Objectif explicite : éliminer le vecteur
+  d'arnaque le plus courant sur les reventes informelles au Sénégal
+  (vendeur qui empoche un virement Wave/Orange Money et disparaît, ou
+  billet déjà scanné revendu quand même).
+- **Transfert à une personne précise (lien/code privé), pas un marché
+  ouvert avec annonces publiques parcourables.** Une place de marché
+  ouverte est un projet nettement plus lourd (recherche, gestion de la
+  demande sur les évènements complets, modération des abus) et crée une
+  dynamique de rareté malsaine. La revente encadrée à une personne connue
+  couvre déjà l'essentiel des cas réels ("je ne peux plus y aller, je le
+  vends à un proche/collègue").
+- **Coupure automatique de la revente peu avant l'évènement** (quelques
+  heures avant le début — valeur exacte à définir au moment de la
+  construction) — évite les transferts de dernière minute qui compliquent
+  le contrôle d'accès et sont un vecteur classique de fraude de dernière
+  seconde.
+- **Commission plateforme — décidé.** La commission de 5% prélevée à
+  l'achat initial (`docs/SPEC.md §5.5`) n'est **jamais remboursée au
+  vendeur** lors d'une revente, et **une nouvelle commission de 5% est
+  prélevée sur l'acheteur** au moment de la revente — traitement
+  symétrique à un achat initial, pas de régime spécial pour la revente.
+
+### 12.3 Explicitement écarté
+
+- Marché ouvert à prix libre (dynamique de scalping identifiée comme le
+  principal risque à éviter — voir 12.2).
+- Revente à un prix supérieur au prix d'origine, sous quelque forme que ce
+  soit (majoration, "prix suggéré", enchère...).
+- Tout échange d'argent hors du flux de paiement de la plateforme
+  (transfert mobile money direct entre vendeur et acheteur).

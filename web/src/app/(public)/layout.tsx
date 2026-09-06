@@ -1,5 +1,6 @@
 import { PublicNavbarProvider } from '@/components/public/public-navbar-context';
 import { PublicNavbar } from '@/components/public/public-navbar';
+import { PublicFooter } from '@/components/public/public-footer';
 
 // Shared by every public/participant route (event detail, checkout, and its
 // confirmation page) — the navbar lives here once instead of being repeated
@@ -10,6 +11,7 @@ export default function PublicLayout({ children }: { children: React.ReactNode }
     <PublicNavbarProvider>
       <PublicNavbar />
       {children}
+      <PublicFooter />
     </PublicNavbarProvider>
   );
 }

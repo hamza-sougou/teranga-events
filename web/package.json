@@ -38,6 +38,7 @@
     "autoprefixer": "^10.4.20",
     "eslint": "^8.57.0",
     "eslint-config-next": "^14.2.13",
+    "playwright": "^1.47.2",
     "postcss": "^8.4.47",
     "prettier": "^3.3.0",
     "prettier-plugin-tailwindcss": "^0.6.6",
