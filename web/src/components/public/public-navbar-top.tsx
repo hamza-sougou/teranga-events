@@ -67,11 +67,8 @@ export function PublicNavbarTop() {
             />
           ) : (
             <>
-              <Link href="/login" className={linkClasses}>
-                Je suis organisateur
-              </Link>
-              <Link href="/register" className={buttonClasses('primary')}>
-                Se connecter / S&apos;inscrire
+              <Link href="/login" className={buttonClasses('primary')}>
+                Espace organisateur
               </Link>
             </>
           )

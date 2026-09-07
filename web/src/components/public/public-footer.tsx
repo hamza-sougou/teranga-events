@@ -10,8 +10,8 @@ import { Wordmark } from '@/components/ui/wordmark';
 import { FacebookIcon, InstagramIcon } from '@/components/ui/icons';
 import type { EventCategory } from '@/types';
 
-const columnTitleClasses = 'mb-3 text-[12px] font-bold uppercase tracking-wide text-on-dark-muted';
-const linkClasses = 'text-[13px] font-semibold text-on-dark-muted transition-colors hover:text-on-dark';
+const columnTitleClasses = 'mb-3 text-[12px] font-bold uppercase tracking-wide text-on-dark';
+const linkClasses = 'text-[13px] font-light text-on-dark transition-colors hover:text-on-dark-muted';
 
 const ORGANIZER_LINKS = [
   { href: '/register', label: 'Devenez organisateur' },
@@ -184,7 +184,7 @@ export function PublicFooter() {
         </div>
 
         <div className="mt-10 flex flex-col gap-3 border-t border-white/[0.08] pt-6 sm:flex-row sm:items-center sm:justify-between">
-          <span className="text-[13px] font-semibold text-on-dark-muted">Paiement 100&nbsp;% sécurisé via PayDunya</span>
+          <span className="text-[13px] font-semibold text-on-dark-muted">Paiement 100&nbsp;% sécurisé</span>
           <PaymentLogos />
         </div>
 

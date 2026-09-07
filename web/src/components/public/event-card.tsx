@@ -39,7 +39,7 @@ export function EventCard({ event, badge, className }: { event: EventCardData; b
     <Link
       href={`/events/${event.slug}`}
       className={cn(
-        'block w-[240px] shrink-0 overflow-hidden rounded-card border-[1.5px] border-border bg-card transition-transform hover:-translate-y-0.5',
+        'block w-[320px] shrink-0 overflow-hidden rounded-card bg-card transition-transform ',
         className,
       )}
     >
