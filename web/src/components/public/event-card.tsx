@@ -46,7 +46,12 @@ export function EventCard({ event, badge, className }: { event: EventCardData; b
       <div className="relative h-[130px] w-full bg-ink-2">
         {event.coverImageUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={event.coverImageUrl} alt={event.name} className="h-full w-full object-cover" />
+          <img
+            src={event.coverImageUrl}
+            alt={event.name}
+            loading="lazy"
+            className="h-full w-full object-cover"
+          />
         ) : null}
         {badge && (
           <span

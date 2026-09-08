@@ -84,15 +84,34 @@ describe('Notifications (e2e)', () => {
 
   async function createPublishedEvent(organizationId: string, userId: string, startAt: string, endAt: string) {
     const unique = randomUUID();
+    const category = await prisma.eventCategory.findFirstOrThrow({ where: { isActive: true } });
     const event = await eventsService.create(organizationId, userId, {
       name: 'Festival de Test',
       slug: `festival-de-test-${unique}`,
+      address: 'Route de la Corniche, Dakar',
+      categoryId: category.id,
       startAt,
       endAt,
     });
     await seedImage(event.id);
+    await seedTicketType(event.id);
     await eventsService.update(organizationId, event.id, { status: EventStatus.PUBLISHED });
     return prisma.event.findUniqueOrThrow({ where: { id: event.id } });
+  }
+
+  // Publishing now also requires at least one ticket type (events.e2e-spec.ts
+  // covers the rule itself) — this file only cares about notifications.
+  function seedTicketType(eventId: string) {
+    return prisma.ticketType.create({
+      data: {
+        eventId,
+        name: 'Standard',
+        price: 5000,
+        quantityTotal: 100,
+        saleStart: '2019-01-01T00:00:00.000Z',
+        saleEnd: '2019-12-31T23:59:59.000Z',
+      },
+    });
   }
 
   // Publishing now requires at least one image (events.e2e-spec.ts covers the

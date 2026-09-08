@@ -8,7 +8,8 @@ import { queryKeys } from '@/lib/query-keys';
 import { usePublicNavbarVisibility } from './public-navbar-context';
 import { Input } from '@/components/ui/input';
 import { SearchIcon, TrendingUpIcon } from '@/components/ui/icons';
-import { EventCard, type EventCardData } from './event-card';
+import { EventCarousel } from './event-carousel';
+import type { EventCardData } from './event-card';
 
 // Full-viewport-ish opener for the homepage. No background fill of its own
 // (inherits the page's --bg) — the visual weight comes from the marker-style
@@ -22,7 +23,7 @@ export function HomeHero() {
 
   const trendingQuery = useQuery<EventCardData[]>({
     queryKey: queryKeys.discoverTrending(),
-    queryFn: async () => (await apiClient.get('/discover/trending')).data,
+    queryFn: async () => (await apiClient.get('/discover/trending', { params: { limit: 16 } })).data,
   });
 
   // Same sentinel + boundingClientRect.top < 0 recipe already fixed on
@@ -78,15 +79,16 @@ export function HomeHero() {
 
         {!trendingQuery.isLoading && (trendingQuery.data?.length ?? 0) > 0 && (
           <div className="mt-14 w-full max-w-6xl">
-            <div className="mb-3 flex items-center gap-2 px-1 text-[12px] font-extrabold uppercase tracking-wide text-text-muted">
-              <TrendingUpIcon className="h-4 w-4" />
-              Évènements en tendance
-            </div>
-            <div className="flex gap-4 overflow-x-auto pb-2">
-              {trendingQuery.data!.map((event) => (
-                <EventCard key={event.id} event={event} />
-              ))}
-            </div>
+            <EventCarousel
+              title={
+                <div className="flex items-center gap-2 px-1 text-[12px] font-extrabold uppercase tracking-wide text-text-muted">
+                  <TrendingUpIcon className="h-4 w-4" />
+                  Évènements en tendance
+                </div>
+              }
+              events={trendingQuery.data!}
+              tone="dark"
+            />
           </div>
         )}
       </div>

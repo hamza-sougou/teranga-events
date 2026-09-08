@@ -76,13 +76,17 @@ describe('Payouts — organizer reversement (e2e)', () => {
 
   async function createEndedEvent(organizationId: string, userId: string, status: 'PUBLISHED' | 'CANCELLED') {
     const unique = randomUUID();
+    const category = await prisma.eventCategory.findFirstOrThrow({ where: { isActive: true } });
     const event = await eventsService.create(organizationId, userId, {
       name: 'Festival Terminé',
       slug: `festival-termine-${unique}`,
+      address: 'Route de la Corniche, Dakar',
+      categoryId: category.id,
       startAt: '2020-01-01T18:00:00.000Z',
       endAt: '2020-01-01T23:00:00.000Z',
     });
     await seedImage(event.id);
+    await seedTicketType(event.id);
     await eventsService.update(organizationId, event.id, { status: EventStatus.PUBLISHED });
     if (status === 'CANCELLED') {
       await eventsService.update(organizationId, event.id, { status: EventStatus.CANCELLED });
@@ -92,14 +96,18 @@ describe('Payouts — organizer reversement (e2e)', () => {
 
   async function createUpcomingEvent(organizationId: string, userId: string) {
     const unique = randomUUID();
+    const category = await prisma.eventCategory.findFirstOrThrow({ where: { isActive: true } });
     const farFuture = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
     const event = await eventsService.create(organizationId, userId, {
       name: 'Festival À Venir',
       slug: `festival-a-venir-${unique}`,
+      address: 'Route de la Corniche, Dakar',
+      categoryId: category.id,
       startAt: farFuture.toISOString(),
       endAt: new Date(farFuture.getTime() + 5 * 60 * 60 * 1000).toISOString(),
     });
     await seedImage(event.id);
+    await seedTicketType(event.id);
     await eventsService.update(organizationId, event.id, { status: EventStatus.PUBLISHED });
     return event;
   }
@@ -115,6 +123,22 @@ describe('Payouts — organizer reversement (e2e)', () => {
         url: `https://example.com/test/${eventId}.jpg`,
         mimeType: 'image/jpeg',
         sizeBytes: 1024,
+      },
+    });
+  }
+
+  // Publishing now also requires at least one ticket type (events.e2e-spec.ts
+  // covers the rule itself) — this file only cares about payout amounts, not
+  // ticket sales, so orders are seeded independently below.
+  function seedTicketType(eventId: string) {
+    return prisma.ticketType.create({
+      data: {
+        eventId,
+        name: 'Standard',
+        price: 5000,
+        quantityTotal: 100,
+        saleStart: '2019-01-01T00:00:00.000Z',
+        saleEnd: '2019-12-31T23:59:59.000Z',
       },
     });
   }

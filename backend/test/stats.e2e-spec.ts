@@ -68,15 +68,34 @@ describe('Stats (e2e)', () => {
 
   async function createEvent(organizationId: string, userId: string, status: EventStatus) {
     const unique = randomUUID();
+    const category = await prisma.eventCategory.findFirstOrThrow({ where: { isActive: true } });
     const event = await eventsService.create(organizationId, userId, {
       name: 'Festival de Test',
       slug: `festival-de-test-${unique}`,
+      address: 'Route de la Corniche, Dakar',
+      categoryId: category.id,
       startAt: '2027-01-01T18:00:00.000Z',
       endAt: '2027-01-01T23:00:00.000Z',
     });
     if (status !== EventStatus.DRAFT) {
       await seedImage(event.id);
+      // Publishing now also requires at least one ticket type. Callers of
+      // this helper create their own ticket type afterwards (via
+      // createTicketType below) and assert exact capacity/salesByTicketType
+      // counts against it, so this throwaway one is removed right after the
+      // transition instead of being left behind to skew those totals.
+      const throwaway = await prisma.ticketType.create({
+        data: {
+          eventId: event.id,
+          name: 'Throwaway',
+          price: 0,
+          quantityTotal: 1,
+          saleStart: new Date('2019-01-01T00:00:00.000Z'),
+          saleEnd: new Date('2019-01-02T00:00:00.000Z'),
+        },
+      });
       await eventsService.update(organizationId, event.id, { status: EventStatus.PUBLISHED });
+      await prisma.ticketType.delete({ where: { id: throwaway.id } });
     }
     if (status === EventStatus.CANCELLED) {
       await eventsService.update(organizationId, event.id, { status: EventStatus.CANCELLED });

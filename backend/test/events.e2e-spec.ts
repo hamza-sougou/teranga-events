@@ -99,6 +99,24 @@ describe('Events (e2e)', () => {
     });
   }
 
+  function seedTicketType(eventId: string) {
+    return prisma.ticketType.create({
+      data: {
+        eventId,
+        name: 'Standard',
+        price: 5000,
+        quantityTotal: 100,
+        saleStart: '2026-12-01T00:00:00.000Z',
+        saleEnd: '2026-12-31T23:59:59.000Z',
+      },
+    });
+  }
+
+  async function realCategoryId() {
+    const category = await prisma.eventCategory.findFirstOrThrow({ where: { isActive: true } });
+    return category.id;
+  }
+
   it('creates an event as OWNER', async () => {
     const { accessToken, organizationId } = await registerOrganizer();
     const payload = eventPayload();
@@ -315,8 +333,23 @@ describe('Events (e2e)', () => {
       .expect(400);
   });
 
-  describe('publish requires at least one image', () => {
-    it('rejects publishing a draft with zero media with 400', async () => {
+  describe('publish requires all mandatory fields', () => {
+    // A fully-qualified draft: category, address, one image, one ticket
+    // type. Each test below removes exactly one of these to assert it's
+    // individually required, mirroring the wizard's per-step gating.
+    async function createCompleteDraft(accessToken: string, organizationId: string, overrides: Record<string, unknown> = {}) {
+      const categoryId = await realCategoryId();
+      const created = await request(app.getHttpServer())
+        .post(`/organizations/${organizationId}/events`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ ...eventPayload(), address: 'Route de la Corniche, Dakar', categoryId, ...overrides })
+        .expect(201);
+      await seedImage(created.body.id);
+      await seedTicketType(created.body.id);
+      return created.body.id;
+    }
+
+    it('rejects publishing a bare draft with 400, listing every missing field', async () => {
       const { accessToken, organizationId } = await registerOrganizer();
       const created = await request(app.getHttpServer())
         .post(`/organizations/${organizationId}/events`)
@@ -324,27 +357,80 @@ describe('Events (e2e)', () => {
         .send(eventPayload())
         .expect(201);
 
-      await request(app.getHttpServer())
+      const res = await request(app.getHttpServer())
         .patch(`/organizations/${organizationId}/events/${created.body.id}`)
         .set('Authorization', `Bearer ${accessToken}`)
         .send({ status: 'PUBLISHED' })
         .expect(400);
+
+      expect(res.body.missingFields).toEqual(
+        expect.arrayContaining(['category', 'address', 'media', 'ticketTypes']),
+      );
     });
 
     it('does not allow a video alone to satisfy the image requirement', async () => {
       const { accessToken, organizationId } = await registerOrganizer();
+      const categoryId = await realCategoryId();
       const created = await request(app.getHttpServer())
         .post(`/organizations/${organizationId}/events`)
         .set('Authorization', `Bearer ${accessToken}`)
-        .send(eventPayload())
+        .send({ ...eventPayload(), address: 'Route de la Corniche, Dakar', categoryId })
         .expect(201);
       await seedVideo(created.body.id);
+      await seedTicketType(created.body.id);
 
-      await request(app.getHttpServer())
+      const res = await request(app.getHttpServer())
         .patch(`/organizations/${organizationId}/events/${created.body.id}`)
         .set('Authorization', `Bearer ${accessToken}`)
         .send({ status: 'PUBLISHED' })
         .expect(400);
+
+      expect(res.body.missingFields).toEqual(['media']);
+    });
+
+    it('rejects publishing without a category with 400', async () => {
+      const { accessToken, organizationId } = await registerOrganizer();
+      const eventId = await createCompleteDraft(accessToken, organizationId, { categoryId: undefined });
+
+      const res = await request(app.getHttpServer())
+        .patch(`/organizations/${organizationId}/events/${eventId}`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ status: 'PUBLISHED' })
+        .expect(400);
+
+      expect(res.body.missingFields).toEqual(['category']);
+    });
+
+    it('rejects publishing without an address with 400', async () => {
+      const { accessToken, organizationId } = await registerOrganizer();
+      const eventId = await createCompleteDraft(accessToken, organizationId, { address: undefined });
+
+      const res = await request(app.getHttpServer())
+        .patch(`/organizations/${organizationId}/events/${eventId}`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ status: 'PUBLISHED' })
+        .expect(400);
+
+      expect(res.body.missingFields).toEqual(['address']);
+    });
+
+    it('rejects publishing without any ticket type with 400', async () => {
+      const { accessToken, organizationId } = await registerOrganizer();
+      const categoryId = await realCategoryId();
+      const created = await request(app.getHttpServer())
+        .post(`/organizations/${organizationId}/events`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ ...eventPayload(), address: 'Route de la Corniche, Dakar', categoryId })
+        .expect(201);
+      await seedImage(created.body.id);
+
+      const res = await request(app.getHttpServer())
+        .patch(`/organizations/${organizationId}/events/${created.body.id}`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ status: 'PUBLISHED' })
+        .expect(400);
+
+      expect(res.body.missingFields).toEqual(['ticketTypes']);
     });
 
     it('does not block saving a draft with zero media (only publish is gated)', async () => {
@@ -362,17 +448,12 @@ describe('Events (e2e)', () => {
         .expect(200);
     });
 
-    it('allows publishing once at least one image exists', async () => {
+    it('allows publishing once every mandatory field is present', async () => {
       const { accessToken, organizationId } = await registerOrganizer();
-      const created = await request(app.getHttpServer())
-        .post(`/organizations/${organizationId}/events`)
-        .set('Authorization', `Bearer ${accessToken}`)
-        .send(eventPayload())
-        .expect(201);
-      await seedImage(created.body.id);
+      const eventId = await createCompleteDraft(accessToken, organizationId);
 
       const res = await request(app.getHttpServer())
-        .patch(`/organizations/${organizationId}/events/${created.body.id}`)
+        .patch(`/organizations/${organizationId}/events/${eventId}`)
         .set('Authorization', `Bearer ${accessToken}`)
         .send({ status: 'PUBLISHED' })
         .expect(200);
@@ -395,7 +476,8 @@ describe('Events (e2e)', () => {
     });
 
     it('returns the public fields once published, without leaking internal fields', async () => {
-      const payload = eventPayload();
+      const categoryId = await realCategoryId();
+      const payload = { ...eventPayload(), address: 'Route de la Corniche, Dakar', categoryId };
       const { accessToken, organizationId } = await registerOrganizer();
       const created = await request(app.getHttpServer())
         .post(`/organizations/${organizationId}/events`)
@@ -403,6 +485,7 @@ describe('Events (e2e)', () => {
         .send(payload)
         .expect(201);
       await seedImage(created.body.id);
+      await seedTicketType(created.body.id);
 
       await request(app.getHttpServer())
         .patch(`/organizations/${organizationId}/events/${created.body.id}`)

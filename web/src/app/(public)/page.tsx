@@ -19,27 +19,27 @@ import type { EventCardData } from '@/components/public/event-card';
 export default function HomePage() {
   const thisWeekendQuery = useQuery<EventCardData[]>({
     queryKey: queryKeys.discoverThisWeekend(),
-    queryFn: async () => (await apiClient.get('/discover/this-weekend')).data,
+    queryFn: async () => (await apiClient.get('/discover/this-weekend', { params: { limit: 16 } })).data,
   });
 
   const sponsoredQuery = useQuery<EventCardData[]>({
     queryKey: queryKeys.discoverSponsored(),
-    queryFn: async () => (await apiClient.get('/discover/sponsored')).data,
+    queryFn: async () => (await apiClient.get('/discover/sponsored', { params: { limit: 16 } })).data,
   });
 
   const recentlyPublishedQuery = useQuery<EventCardData[]>({
     queryKey: queryKeys.discoverRecentlyPublished(),
-    queryFn: async () => (await apiClient.get('/discover/recently-published')).data,
+    queryFn: async () => (await apiClient.get('/discover/recently-published', { params: { limit: 16 } })).data,
   });
 
   const lastChanceQuery = useQuery<EventCardData[]>({
     queryKey: queryKeys.discoverLastChance(),
-    queryFn: async () => (await apiClient.get('/discover/last-chance')).data,
+    queryFn: async () => (await apiClient.get('/discover/last-chance', { params: { limit: 16 } })).data,
   });
 
   const freeQuery = useQuery<EventCardData[]>({
     queryKey: queryKeys.discoverFree(),
-    queryFn: async () => (await apiClient.get('/discover/free')).data,
+    queryFn: async () => (await apiClient.get('/discover/free', { params: { limit: 16 } })).data,
   });
 
   return (

@@ -180,14 +180,33 @@ export class EventsService {
         throw new BadRequestException(`Cannot transition event from ${event.status} to ${dto.status}`);
       }
 
-      // At least one image is required to publish — never for a draft.
-      // See docs/SPEC.md and db/schema.sql section 4B.
+      // Publishing requires the full mandatory data set. All conditions are
+      // collected before throwing (not fail-fast) so a caller — the wizard's
+      // recap step in particular — gets every missing piece in one round
+      // trip instead of fixing them one at a time. Extends the original
+      // image-only rule; see docs/SPEC.md and db/schema.sql section 4B.
       if (dto.status === EventStatus.PUBLISHED) {
-        const imageCount = await this.prisma.eventMedia.count({
-          where: { eventId, type: 'IMAGE' },
-        });
-        if (imageCount === 0) {
-          throw new BadRequestException('At least one image is required to publish an event');
+        const missingFields: string[] = [];
+        const effectiveName = dto.name ?? event.name;
+        const effectiveCategoryId = dto.categoryId ?? event.categoryId;
+        const effectiveAddress = dto.address ?? event.address;
+
+        if (!effectiveName) missingFields.push('name');
+        if (!effectiveCategoryId) missingFields.push('category');
+        if (!effectiveAddress) missingFields.push('address');
+
+        const [imageCount, ticketTypeCount] = await Promise.all([
+          this.prisma.eventMedia.count({ where: { eventId, type: 'IMAGE' } }),
+          this.prisma.ticketType.count({ where: { eventId } }),
+        ]);
+        if (imageCount === 0) missingFields.push('media');
+        if (ticketTypeCount === 0) missingFields.push('ticketTypes');
+
+        if (missingFields.length > 0) {
+          throw new BadRequestException({
+            message: 'Cannot publish event: missing required fields',
+            missingFields,
+          });
         }
       }
     }

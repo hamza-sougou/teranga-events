@@ -107,15 +107,35 @@ describe('Admin Organizations — validation des organisateurs (e2e)', () => {
 
   async function createPublishedEvent(organizationId: string, userId: string) {
     const unique = randomUUID();
+    const category = await prisma.eventCategory.findFirstOrThrow({ where: { isActive: true } });
     const event = await eventsService.create(organizationId, userId, {
       name: 'Festival Admin Test',
       slug: `festival-admin-test-${unique}`,
+      address: 'Route de la Corniche, Dakar',
+      categoryId: category.id,
       startAt: '2030-01-01T18:00:00.000Z',
       endAt: '2030-01-01T23:00:00.000Z',
     });
     await seedImage(event.id);
+    await seedTicketType(event.id);
     await eventsService.update(organizationId, event.id, { status: EventStatus.PUBLISHED });
     return event;
+  }
+
+  // Publishing now also requires at least one ticket type (events.e2e-spec.ts
+  // covers the rule itself) — this file only cares about org-level admin
+  // actions, not ticket sales.
+  function seedTicketType(eventId: string) {
+    return prisma.ticketType.create({
+      data: {
+        eventId,
+        name: 'Standard',
+        price: 5000,
+        quantityTotal: 100,
+        saleStart: '2019-01-01T00:00:00.000Z',
+        saleEnd: '2019-12-31T23:59:59.000Z',
+      },
+    });
   }
 
   function createPaidOrder(eventId: string, subtotalAmount: number) {
@@ -236,13 +256,17 @@ describe('Admin Organizations — validation des organisateurs (e2e)', () => {
 
     async function createEndedPublishedEvent(organizationId: string, userId: string) {
       const unique = randomUUID();
+      const category = await prisma.eventCategory.findFirstOrThrow({ where: { isActive: true } });
       const event = await eventsService.create(organizationId, userId, {
         name: 'Festival Deja Termine',
         slug: `festival-deja-termine-${unique}`,
+        address: 'Route de la Corniche, Dakar',
+        categoryId: category.id,
         startAt: '2020-01-01T18:00:00.000Z',
         endAt: '2020-01-01T23:00:00.000Z',
       });
       await seedImage(event.id);
+      await seedTicketType(event.id);
       return eventsService.update(organizationId, event.id, { status: EventStatus.PUBLISHED });
     }
 

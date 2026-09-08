@@ -3,7 +3,6 @@
 import { useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { z } from 'zod';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { FormField } from '@/components/ui/form-field';
@@ -13,62 +12,11 @@ import { CategorySelect } from '@/components/events/category-select';
 import { EventLocationPicker } from '@/components/events/event-location-picker';
 import { MinAgeField } from '@/components/events/min-age-field';
 import { DressCodeEditor } from '@/components/events/dress-code-editor';
+import { eventSchema, type EventFormValues, type EventFormSubmitPayload } from '@/components/events/event-schema';
 import { slugify, toDatetimeLocalValue } from '@/lib/utils';
-import type { DressCodeAudience, Event } from '@/types';
+import type { Event } from '@/types';
 
-// Mirrors backend/src/events/dto/create-event.dto.ts's validation rules
-// client-side for earlier feedback — the server still re-validates, this is
-// UX only, not a trust boundary change.
-const eventSchema = z
-  .object({
-    name: z.string().min(2, 'Le nom doit contenir au moins 2 caractères.'),
-    slug: z.string().regex(/^[a-z0-9-]+$/, 'Lettres minuscules, chiffres et tirets uniquement.'),
-    description: z.string().optional(),
-    venueName: z.string().optional(),
-    address: z.string().optional(),
-    country: z.string().optional(),
-    city: z.string().optional(),
-    latitude: z.number().nullable().optional(),
-    longitude: z.number().nullable().optional(),
-    categoryId: z.string().optional(),
-    startAt: z.string().min(1, 'Date de début requise.'),
-    endAt: z.string().min(1, 'Date de fin requise.'),
-    minAge: z.number().int().min(0).max(99).nullable().optional(),
-    dressCodes: z
-      .array(
-        z.object({
-          label: z.string().min(1, 'Libellé requis.').max(25, '25 caractères maximum.'),
-          appliesTo: z.enum(['EVERYONE', 'MEN', 'WOMEN']),
-        }),
-      )
-      .optional(),
-  })
-  .refine((data) => new Date(data.endAt) > new Date(data.startAt), {
-    message: 'La date de fin doit être après la date de début.',
-    path: ['endAt'],
-  });
-
-type EventFormValues = z.infer<typeof eventSchema>;
-
-export interface EventFormSubmitPayload {
-  name: string;
-  slug: string;
-  description?: string;
-  venueName?: string;
-  address?: string;
-  country?: string;
-  city?: string;
-  latitude?: number;
-  longitude?: number;
-  categoryId?: string;
-  startAt: string;
-  endAt: string;
-  // Paramètres optionnels — always sent explicitly (never omitted) so an
-  // organizer can clear a previously-set value: minAge: null must reach the
-  // server as null, not as an absent field the backend would leave untouched.
-  minAge: number | null;
-  dressCodes: { label: string; appliesTo: DressCodeAudience }[];
-}
+export type { EventFormSubmitPayload };
 
 interface EventFormProps {
   mode: 'create' | 'edit';

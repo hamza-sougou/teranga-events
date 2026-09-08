@@ -99,18 +99,38 @@ describe('Discovery (e2e)', () => {
     } = {},
   ) {
     const unique = randomUUID();
+    // 'autre' is a stable, deliberately different default from 'concert' —
+    // the category-filter test below asserts a no-categoryId event must NOT
+    // match a 'concert' filter, so this default must never collide with it.
+    const categoryId = opts.categoryId ?? (await prisma.eventCategory.findFirstOrThrow({ where: { slug: 'autre' } })).id;
     const event = await eventsService.create(organizationId, userId, {
       name: 'Festival de Test',
       slug: `festival-de-test-${unique}`,
+      address: 'Route de la Corniche, Dakar',
       startAt: opts.startAt ?? '2027-01-01T18:00:00.000Z',
       endAt: opts.endAt ?? '2027-01-01T23:00:00.000Z',
-      categoryId: opts.categoryId,
+      categoryId,
       latitude: opts.latitude,
       longitude: opts.longitude,
     });
     if (opts.publish !== false) {
       await seedImage(event.id);
+      // Publishing now also requires at least one ticket type. Some tests
+      // add their own real one afterwards via createTicketType — this
+      // throwaway only exists to pass the gate and is removed right away,
+      // so it never leaks into discovery results.
+      const throwaway = await prisma.ticketType.create({
+        data: {
+          eventId: event.id,
+          name: 'Throwaway',
+          price: 0,
+          quantityTotal: 1,
+          saleStart: new Date('2019-01-01T00:00:00.000Z'),
+          saleEnd: new Date('2019-01-02T00:00:00.000Z'),
+        },
+      });
       await eventsService.update(organizationId, event.id, { status: EventStatus.PUBLISHED });
+      await prisma.ticketType.delete({ where: { id: throwaway.id } });
     }
     return prisma.event.findUniqueOrThrow({ where: { id: event.id } });
   }

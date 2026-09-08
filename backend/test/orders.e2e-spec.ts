@@ -80,14 +80,32 @@ describe('Orders — checkout & expiration (e2e)', () => {
 
   async function createPublishedEvent(organizationId: string, userId: string) {
     const unique = randomUUID();
+    const category = await prisma.eventCategory.findFirstOrThrow({ where: { isActive: true } });
     const event = await eventsService.create(organizationId, userId, {
       name: 'Festival de Test',
       slug: `festival-de-test-${unique}`,
+      address: 'Route de la Corniche, Dakar',
+      categoryId: category.id,
       startAt: '2027-01-01T18:00:00.000Z',
       endAt: '2027-01-01T23:00:00.000Z',
     });
     await seedImage(event.id);
-    return eventsService.update(organizationId, event.id, { status: EventStatus.PUBLISHED });
+    // Publishing now also requires at least one ticket type. Tests create
+    // their own via createOnSaleTicketType afterwards, so this throwaway
+    // one only exists to pass the gate and is removed right away.
+    const throwaway = await prisma.ticketType.create({
+      data: {
+        eventId: event.id,
+        name: 'Throwaway',
+        price: 0,
+        quantityTotal: 1,
+        saleStart: new Date('2019-01-01T00:00:00.000Z'),
+        saleEnd: new Date('2019-01-02T00:00:00.000Z'),
+      },
+    });
+    const published = await eventsService.update(organizationId, event.id, { status: EventStatus.PUBLISHED });
+    await prisma.ticketType.delete({ where: { id: throwaway.id } });
+    return published;
   }
 
   // Publishing now requires at least one image (events.e2e-spec.ts covers the

@@ -61,9 +61,12 @@ describe('TicketTypes (e2e)', () => {
 
   async function createEvent(organizationId: string, userId: string) {
     const unique = randomUUID();
+    const category = await prisma.eventCategory.findFirstOrThrow({ where: { isActive: true } });
     return eventsService.create(organizationId, userId, {
       name: 'Festival de Test',
       slug: `festival-de-test-${unique}`,
+      address: 'Route de la Corniche, Dakar',
+      categoryId: category.id,
       startAt: '2027-01-01T18:00:00.000Z',
       endAt: '2027-01-01T23:00:00.000Z',
     });

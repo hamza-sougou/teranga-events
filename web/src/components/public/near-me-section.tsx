@@ -34,7 +34,7 @@ export function NearMeSection() {
     queryKey: queryKeys.discoverNearMe(geo.status === 'granted' ? geo.lat : undefined, geo.status === 'granted' ? geo.lng : undefined),
     queryFn: async () => {
       if (geo.status !== 'granted') return [];
-      return (await apiClient.get('/discover/near-me', { params: { lat: geo.lat, lng: geo.lng } })).data;
+      return (await apiClient.get('/discover/near-me', { params: { lat: geo.lat, lng: geo.lng, limit: 16 } })).data;
     },
     enabled: geo.status === 'granted',
   });

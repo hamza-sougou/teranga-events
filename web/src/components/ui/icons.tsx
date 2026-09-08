@@ -9,6 +9,7 @@ import pencil from '@iconify-icons/lucide/pencil';
 import x from '@iconify-icons/lucide/x';
 import loader2 from '@iconify-icons/lucide/loader-2';
 import chevronRight from '@iconify-icons/lucide/chevron-right';
+import chevronLeft from '@iconify-icons/lucide/chevron-left';
 import image from '@iconify-icons/lucide/image';
 import video from '@iconify-icons/lucide/video';
 import uploadCloud from '@iconify-icons/lucide/upload-cloud';
@@ -72,6 +73,10 @@ export function LoaderIcon({ className }: IconProps) {
 
 export function ChevronRightIcon({ className }: IconProps) {
   return <Icon icon={chevronRight} className={className} />;
+}
+
+export function ChevronLeftIcon({ className }: IconProps) {
+  return <Icon icon={chevronLeft} className={className} />;
 }
 
 export function ImageIcon({ className }: IconProps) {

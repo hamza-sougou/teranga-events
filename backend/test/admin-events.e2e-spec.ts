@@ -88,11 +88,27 @@ describe('Admin Events — modération plateforme (e2e)', () => {
     });
   }
 
+  function seedTicketType(eventId: string) {
+    return prisma.ticketType.create({
+      data: {
+        eventId,
+        name: 'Standard',
+        price: 5000,
+        quantityTotal: 100,
+        saleStart: '2019-01-01T00:00:00.000Z',
+        saleEnd: '2019-12-31T23:59:59.000Z',
+      },
+    });
+  }
+
   async function createEvent(organizationId: string, userId: string, name: string, startAt: string) {
     const unique = randomUUID();
+    const category = await prisma.eventCategory.findFirstOrThrow({ where: { isActive: true } });
     return eventsService.create(organizationId, userId, {
       name,
       slug: `${name.toLowerCase().replace(/\s+/g, '-')}-${unique}`,
+      address: 'Route de la Corniche, Dakar',
+      categoryId: category.id,
       startAt,
       endAt: new Date(new Date(startAt).getTime() + 5 * 60 * 60 * 1000).toISOString(),
     });
@@ -101,6 +117,7 @@ describe('Admin Events — modération plateforme (e2e)', () => {
   async function createPublishedEvent(organizationId: string, userId: string, name: string, startAt: string) {
     const event = await createEvent(organizationId, userId, name, startAt);
     await seedImage(event.id);
+    await seedTicketType(event.id);
     return eventsService.update(organizationId, event.id, { status: EventStatus.PUBLISHED });
   }
 

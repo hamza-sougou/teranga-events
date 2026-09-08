@@ -1,6 +1,7 @@
 import { Kicker } from '@/components/ui/kicker';
 import { cn } from '@/lib/utils';
-import { EventCard, type EventCardData } from './event-card';
+import { EventCarousel } from './event-carousel';
+import type { EventCardData } from './event-card';
 
 type SectionTone = 'light' | 'dark';
 
@@ -22,29 +23,30 @@ export function DiscoverySection({ title, icon, tone = 'light', isLoading, event
   if (!isLoading && events.length === 0) return null;
 
   const isDark = tone === 'dark';
+  const heading = (
+    <h2
+      className={cn(
+        'flex items-center gap-2 text-lg font-black uppercase tracking-[-0.01em]',
+        isDark ? 'text-on-dark' : 'text-text',
+      )}
+    >
+      {icon}
+      {title}
+    </h2>
+  );
 
   return (
     <section className={cn('py-10', isDark ? 'bg-ink' : 'bg-bg')}>
       <div className="mx-auto max-w-6xl px-6 sm:px-10">
         <Kicker tone={isDark ? 'dark' : 'light'} />
-        <h2
-          className={cn(
-            'mb-4 flex items-center gap-2 text-lg font-black uppercase tracking-[-0.01em]',
-            isDark ? 'text-on-dark' : 'text-text',
-          )}
-        >
-          {icon}
-          {title}
-        </h2>
 
         {isLoading ? (
-          <div className={cn('h-[228px] w-full animate-pulse rounded-card', isDark ? 'bg-ink-2' : 'bg-card')} />
+          <>
+            <div className="mb-4">{heading}</div>
+            <div className={cn('h-[228px] w-full animate-pulse rounded-card', isDark ? 'bg-ink-2' : 'bg-card')} />
+          </>
         ) : (
-          <div className="flex gap-4 overflow-x-auto pb-2">
-            {events.map((event) => (
-              <EventCard key={event.id} event={event} badge={badge?.(event)} />
-            ))}
-          </div>
+          <EventCarousel title={heading} events={events} badge={badge} tone={tone} />
         )}
       </div>
     </section>

@@ -1,7 +1,7 @@
 import type { EventCardData } from '@/components/public/event-card';
 
 const STORAGE_KEY = 'zen-events:recently-viewed';
-const MAX_ENTRIES = 10;
+const MAX_ENTRIES = 16;
 
 // docs/SPEC.md §9.1 — "Vus récemment" is 100% client-side, no backend list-
 // by-ids endpoint exists (nor should one, per the spec). So the full card
