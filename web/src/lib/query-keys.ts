@@ -29,6 +29,7 @@ export const queryKeys = {
   discoverRecentlyPublished: () => ['discover-recently-published'],
   discoverLastChance: () => ['discover-last-chance'],
   discoverFree: () => ['discover-free'],
+  publicEventsList: (filters?: { category?: string; q?: string; page?: number }) => ['public-events-list', filters],
   orderPreview: (eventId?: string, itemsKey?: string) => ['order-preview', eventId, itemsKey],
   publicOrder: (orderId?: string) => ['public-order', orderId],
   adminOrganizations: () => ['admin-organizations'],

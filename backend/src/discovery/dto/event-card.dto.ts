@@ -9,6 +9,7 @@ export interface EventCardDto {
   category: { slug: string; label: string; icon: string; colorToken: string } | null;
   coverImageUrl: string | null;
   city: string | null;
+  venueName: string | null;
   startAt: Date;
   // Commission-included price (docs/SPEC.md §5.5), same reference channel as
   // TicketTypesService.findPublicForEvent (mobile money, cheapest ticket

@@ -1,37 +1,11 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { EventStatus, OrderStatus, Prisma, TicketAccessMode } from '@prisma/client';
+import { EventStatus, OrderStatus, TicketAccessMode } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { PricingService } from '../payments/pricing/pricing.service';
-import { PaymentChannel } from '../payments/pricing/payment-channel';
 import { EventCardDto } from './dto/event-card.dto';
+import { EVENT_CARD_SELECT, EventCardRow, NOT_SUSPENDED, toEventCard } from './event-card.mapper';
 
 const DEFAULT_LIMIT = 10;
-
-// Reused by every section below so the "event card" shape never drifts
-// between them — also the shape the future full search/listing page reuses
-// (docs/SPEC.md §9). Presale-whitelist ticket types are excluded from the
-// price reference for the same reason as TicketTypesService.findPublicForEvent:
-// no visitor identity exists on the homepage to resolve access against.
-const EVENT_CARD_SELECT = {
-  id: true,
-  slug: true,
-  name: true,
-  city: true,
-  startAt: true,
-  category: { select: { slug: true, label: true, icon: true, colorToken: true } },
-  media: { select: { url: true }, where: { type: 'IMAGE' }, orderBy: { createdAt: 'asc' }, take: 1 },
-  ticketTypes: {
-    select: { price: true, currency: true },
-    where: { accessMode: { not: TicketAccessMode.PRESALE_WHITELIST } },
-  },
-} satisfies Prisma.EventSelect;
-
-// Every discovery query below filters `status: PUBLISHED` — this adds the
-// same "not from a suspended organization" condition, spread into each
-// `where` so it composes with whatever else that section already filters on.
-const NOT_SUSPENDED = { organization: { suspendedAt: null } } satisfies Prisma.EventWhereInput;
-
-type EventCardRow = Prisma.EventGetPayload<{ select: typeof EVENT_CARD_SELECT }>;
 
 @Injectable()
 export class DiscoveryService {
@@ -224,27 +198,7 @@ export class DiscoveryService {
   }
 
   private toCard(event: EventCardRow): EventCardDto {
-    const prices = event.ticketTypes.map((tt) => Number(tt.price));
-    const cheapest = prices.length > 0 ? Math.min(...prices) : null;
-    return {
-      id: event.id,
-      slug: event.slug,
-      name: event.name,
-      category: event.category
-        ? {
-            slug: event.category.slug,
-            label: event.category.label,
-            icon: event.category.icon,
-            colorToken: event.category.colorToken,
-          }
-        : null,
-      coverImageUrl: event.media[0]?.url ?? null,
-      city: event.city,
-      startAt: event.startAt,
-      displayPrice:
-        cheapest !== null ? this.pricingService.quoteCheckout(cheapest, PaymentChannel.MOBILE_MONEY).totalAmount : null,
-      currency: event.ticketTypes[0]?.currency ?? 'XOF',
-    };
+    return toEventCard(event, this.pricingService);
   }
 }
 

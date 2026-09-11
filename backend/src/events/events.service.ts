@@ -5,7 +5,13 @@ import { CreateEventDto } from './dto/create-event.dto';
 import { UpdateEventDto } from './dto/update-event.dto';
 import { DressCodeEntryDto } from './dto/dress-code-entry.dto';
 import { AdminEventsQueryDto } from './dto/admin-events-query.dto';
+import { PublicEventsQueryDto } from './dto/public-events-query.dto';
 import { NotificationsService } from '../notifications/notifications.service';
+import { PricingService } from '../payments/pricing/pricing.service';
+import { EVENT_CARD_SELECT, NOT_SUSPENDED, toEventCard } from '../discovery/event-card.mapper';
+import { EventCardDto } from '../discovery/dto/event-card.dto';
+
+const DEFAULT_LIST_LIMIT = 20;
 
 // Maximum dress code entries per applies_to value — the three buckets
 // (everyone/men/women) are independent, no cross-counting. Enforced here,
@@ -58,6 +64,7 @@ export class EventsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly notificationsService: NotificationsService,
+    private readonly pricingService: PricingService,
   ) {}
 
   async create(organizationId: string, userId: string, dto: CreateEventDto) {
@@ -296,6 +303,42 @@ export class EventsService {
     });
 
     return updated;
+  }
+
+  // Public listing/search page (`GET /events`) — same PUBLISHED-only,
+  // not-suspended visibility as findPublicBySlug and every DiscoveryService
+  // section, but paginated and combinable on category + free-text search
+  // instead of a single fixed slice. Reuses EVENT_CARD_SELECT/toEventCard so
+  // displayPrice is computed identically to the homepage carousels, never a
+  // second formula.
+  async findPublicList(filters: PublicEventsQueryDto): Promise<{ items: EventCardDto[]; total: number; page: number; limit: number }> {
+    const page = filters.page ?? 1;
+    const limit = filters.limit ?? DEFAULT_LIST_LIMIT;
+
+    const where: Prisma.EventWhereInput = {
+      status: EventStatus.PUBLISHED,
+      ...NOT_SUSPENDED,
+      category: filters.category ? { slug: filters.category } : undefined,
+      ...(filters.q && {
+        OR: [
+          { name: { contains: filters.q, mode: 'insensitive' } },
+          { description: { contains: filters.q, mode: 'insensitive' } },
+        ],
+      }),
+    };
+
+    const [events, total] = await Promise.all([
+      this.prisma.event.findMany({
+        where,
+        orderBy: { startAt: 'asc' },
+        skip: (page - 1) * limit,
+        take: limit,
+        select: EVENT_CARD_SELECT,
+      }),
+      this.prisma.event.count({ where }),
+    ]);
+
+    return { items: events.map((event) => toEventCard(event, this.pricingService)), total, page, limit };
   }
 
   async findPublicBySlug(slug: string) {

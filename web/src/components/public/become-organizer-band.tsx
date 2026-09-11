@@ -14,7 +14,7 @@ export function BecomeOrganizerBand() {
         <h2 className="text-2xl font-black leading-tight text-white sm:text-3xl">
           Organisez votre prochain évènement avec Zen Events
         </h2>
-        <p className="max-w-md text-[14px] font-semibold text-on-dark-muted">
+        <p className="max-w-md text-[14px] font-semibold text-on-dark">
           Billetterie, contrôle d&apos;accès, statistiques en temps réel — tout ce qu&apos;il faut pour vendre et gérer vos
           places.
         </p>

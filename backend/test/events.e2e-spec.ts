@@ -504,6 +504,172 @@ describe('Events (e2e)', () => {
     });
   });
 
+  describe('GET /events (public list)', () => {
+    // Publishes a real, fully-qualified event (category/address/image/ticket
+    // type) via the same wizard-shaped flow as `createCompleteDraft` above —
+    // this suite tests the listing endpoint's own filters, not the publish
+    // gate, so every fixture here is publishable by construction.
+    async function publishEvent(accessToken: string, organizationId: string, overrides: Record<string, unknown> = {}) {
+      const categoryId = (overrides.categoryId as string | undefined) ?? (await realCategoryId());
+      const created = await request(app.getHttpServer())
+        .post(`/organizations/${organizationId}/events`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ ...eventPayload(), address: 'Route de la Corniche, Dakar', categoryId, ...overrides })
+        .expect(201);
+      await seedImage(created.body.id);
+      await seedTicketType(created.body.id);
+      await request(app.getHttpServer())
+        .patch(`/organizations/${organizationId}/events/${created.body.id}`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ status: 'PUBLISHED' })
+        .expect(200);
+      return created.body;
+    }
+
+    it('filters by category slug', async () => {
+      const { accessToken, organizationId } = await registerOrganizer();
+      const concert = await prisma.eventCategory.findFirstOrThrow({ where: { slug: 'concert' } });
+      const festival = await prisma.eventCategory.findFirstOrThrow({ where: { slug: 'festival' } });
+      const matching = await publishEvent(accessToken, organizationId, { categoryId: concert.id });
+      const nonMatching = await publishEvent(accessToken, organizationId, { categoryId: festival.id });
+
+      const res = await request(app.getHttpServer()).get('/events').query({ category: 'concert' }).expect(200);
+
+      const ids = res.body.items.map((card: { id: string }) => card.id);
+      expect(ids).toContain(matching.id);
+      expect(ids).not.toContain(nonMatching.id);
+    });
+
+    // A random marker embedded in the event name scopes this test's search
+    // results to exactly its own fixtures — the endpoint has no organization
+    // scoping (it's a cross-tenant public listing), so other suites'
+    // published events are otherwise indistinguishable noise in the results.
+    it('filters by free-text search on the event name, case-insensitively', async () => {
+      const { accessToken, organizationId } = await registerOrganizer();
+      const marker = randomUUID();
+      const matching = await publishEvent(accessToken, organizationId, { name: `Concert Exceptionnel ${marker}` });
+      await publishEvent(accessToken, organizationId, { name: `Festival Sans Rapport ${randomUUID()}` });
+
+      const res = await request(app.getHttpServer())
+        .get('/events')
+        .query({ q: marker.toUpperCase() })
+        .expect(200);
+
+      expect(res.body.items.map((card: { id: string }) => card.id)).toEqual([matching.id]);
+    });
+
+    it('combines category and q as an AND, not an OR', async () => {
+      const { accessToken, organizationId } = await registerOrganizer();
+      const concert = await prisma.eventCategory.findFirstOrThrow({ where: { slug: 'concert' } });
+      const festival = await prisma.eventCategory.findFirstOrThrow({ where: { slug: 'festival' } });
+      const marker = randomUUID();
+      const matching = await publishEvent(accessToken, organizationId, {
+        categoryId: concert.id,
+        name: `Concert ${marker}`,
+      });
+      // Same marker, wrong category — must be excluded by the AND.
+      await publishEvent(accessToken, organizationId, { categoryId: festival.id, name: `Festival ${marker}` });
+
+      const res = await request(app.getHttpServer())
+        .get('/events')
+        .query({ category: 'concert', q: marker })
+        .expect(200);
+
+      expect(res.body.items.map((card: { id: string }) => card.id)).toEqual([matching.id]);
+    });
+
+    it('paginates with page/limit and reports total, without repeating items across pages', async () => {
+      const { accessToken, organizationId } = await registerOrganizer();
+      const marker = randomUUID();
+      const events = [];
+      for (let i = 0; i < 3; i++) {
+        events.push(
+          await publishEvent(accessToken, organizationId, {
+            name: `Évènement ${marker} ${i}`,
+            startAt: new Date(Date.UTC(2027, 5, 1 + i, 18, 0, 0)).toISOString(),
+            endAt: new Date(Date.UTC(2027, 5, 1 + i, 23, 0, 0)).toISOString(),
+          }),
+        );
+      }
+
+      const page1 = await request(app.getHttpServer())
+        .get('/events')
+        .query({ q: marker, page: 1, limit: 2 })
+        .expect(200);
+      expect(page1.body.items).toHaveLength(2);
+      expect(page1.body.total).toBe(3);
+
+      const page2 = await request(app.getHttpServer())
+        .get('/events')
+        .query({ q: marker, page: 2, limit: 2 })
+        .expect(200);
+      expect(page2.body.items).toHaveLength(1);
+      expect(page2.body.total).toBe(3);
+
+      const page1Ids = page1.body.items.map((card: { id: string }) => card.id);
+      const page2Ids = page2.body.items.map((card: { id: string }) => card.id);
+      expect(page1Ids).not.toEqual(expect.arrayContaining(page2Ids));
+      expect([...page1Ids, ...page2Ids].sort()).toEqual(events.map((e) => e.id).sort());
+    });
+
+    it('sorts by startAt ascending by default', async () => {
+      const { accessToken, organizationId } = await registerOrganizer();
+      const marker = randomUUID();
+      const later = await publishEvent(accessToken, organizationId, {
+        name: `Plus tard ${marker}`,
+        startAt: '2027-08-01T18:00:00.000Z',
+        endAt: '2027-08-01T23:00:00.000Z',
+      });
+      const sooner = await publishEvent(accessToken, organizationId, {
+        name: `Plus tôt ${marker}`,
+        startAt: '2027-07-01T18:00:00.000Z',
+        endAt: '2027-07-01T23:00:00.000Z',
+      });
+
+      const res = await request(app.getHttpServer()).get('/events').query({ q: marker }).expect(200);
+
+      expect(res.body.items.map((card: { id: string }) => card.id)).toEqual([sooner.id, later.id]);
+    });
+
+    it('excludes draft and cancelled events', async () => {
+      const { accessToken, organizationId } = await registerOrganizer();
+      const marker = randomUUID();
+
+      const draft = await request(app.getHttpServer())
+        .post(`/organizations/${organizationId}/events`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ ...eventPayload(), name: `Brouillon ${marker}` })
+        .expect(201);
+
+      const cancelled = await publishEvent(accessToken, organizationId, { name: `Annulé ${marker}` });
+      await request(app.getHttpServer())
+        .patch(`/organizations/${organizationId}/events/${cancelled.id}`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ status: 'CANCELLED' })
+        .expect(200);
+
+      const res = await request(app.getHttpServer()).get('/events').query({ q: marker }).expect(200);
+
+      const ids = res.body.items.map((card: { id: string }) => card.id);
+      expect(ids).not.toContain(draft.body.id);
+      expect(ids).not.toContain(cancelled.id);
+      expect(res.body.total).toBe(0);
+    });
+
+    it('excludes events belonging to a suspended organization', async () => {
+      const { accessToken, organizationId } = await registerOrganizer();
+      const marker = randomUUID();
+      const event = await publishEvent(accessToken, organizationId, { name: `Suspendu ${marker}` });
+
+      await prisma.organization.update({ where: { id: organizationId }, data: { suspendedAt: new Date() } });
+
+      const res = await request(app.getHttpServer()).get('/events').query({ q: marker }).expect(200);
+
+      expect(res.body.items.map((card: { id: string }) => card.id)).not.toContain(event.id);
+      expect(res.body.total).toBe(0);
+    });
+  });
+
   describe('optional settings (min age & dress code)', () => {
     it('treats an absent minAge as "everyone" (null)', async () => {
       const { accessToken, organizationId } = await registerOrganizer();

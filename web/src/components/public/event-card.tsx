@@ -13,6 +13,7 @@ export interface EventCardData {
   category: EventCategory | null;
   coverImageUrl: string | null;
   city: string | null;
+  venueName: string | null;
   startAt: string;
   displayPrice: number | null;
 }
@@ -67,7 +68,7 @@ export function EventCard({ event, badge, className }: { event: EventCardData; b
 
       <div className="p-3">
         {event.category && <EventCategoryBadge category={event.category} />}
-        <div className="mt-2 truncate text-[14px] font-extrabold text-text">{event.name}</div>
+        <div className="mt-2 truncate text-[20px] font-extrabold text-text">{event.name}</div>
         <div className="mt-1 flex items-center gap-1 truncate text-[12px] font-semibold text-text-muted">
           {event.city && (
             <>
@@ -76,7 +77,13 @@ export function EventCard({ event, badge, className }: { event: EventCardData; b
               <span>•</span>
             </>
           )}
-          <span className="shrink-0">{format(new Date(event.startAt), 'd MMM', { locale: fr })}</span>
+          {event.venueName && (
+            <>
+              <span className="truncate">{event.venueName}</span>
+              <span>•</span>
+            </>
+          )}
+          <span className="shrink-0">{format(new Date(event.startAt), 'eee d MMM', { locale: fr })}</span>
         </div>
         <div className="mt-2 text-[13px] font-bold text-indigo">
           {event.displayPrice === null ? 'Prix à venir' : event.displayPrice === 0 ? 'Gratuit' : formatXof(event.displayPrice)}
