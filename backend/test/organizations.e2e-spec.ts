@@ -129,6 +129,28 @@ describe('Organizations (e2e)', () => {
         .send({ contactPhone: 'not-a-phone-number' })
         .expect(400);
     });
+
+    it('lets OWNER set a bio within the length limit', async () => {
+      const owner = await registerOrganizer();
+
+      const res = await request(app.getHttpServer())
+        .patch(`/organizations/${owner.organizationId}`)
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .send({ bio: 'Nous organisons des festivals de musique traditionnelle depuis 2015.' })
+        .expect(200);
+
+      expect(res.body.bio).toBe('Nous organisons des festivals de musique traditionnelle depuis 2015.');
+    });
+
+    it('rejects a bio over 500 characters', async () => {
+      const owner = await registerOrganizer();
+
+      await request(app.getHttpServer())
+        .patch(`/organizations/${owner.organizationId}`)
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .send({ bio: 'a'.repeat(501) })
+        .expect(400);
+    });
   });
 
   describe('PATCH /organizations/:id/payout-method', () => {

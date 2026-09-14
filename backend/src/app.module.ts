@@ -25,6 +25,7 @@ import { NotificationsModule } from './notifications/notifications.module';
 import { StatsModule } from './stats/stats.module';
 import { StorageModule } from './storage/storage.module';
 import { EventMediaModule } from './event-media/event-media.module';
+import { OrganizationMediaModule } from './organization-media/organization-media.module';
 import { GeocodingModule } from './geocoding/geocoding.module';
 import { DiscoveryModule } from './discovery/discovery.module';
 import { AdminFinanceModule } from './admin-finance/admin-finance.module';
@@ -61,6 +62,7 @@ const isTestEnv = process.env.NODE_ENV === 'test';
     StatsModule,
     StorageModule,
     EventMediaModule,
+    OrganizationMediaModule,
     GeocodingModule,
     DiscoveryModule,
     AdminFinanceModule,

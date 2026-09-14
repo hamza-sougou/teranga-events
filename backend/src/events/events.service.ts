@@ -50,12 +50,12 @@ const PUBLIC_EVENT_SELECT = {
     select: { id: true, type: true, url: true },
     orderBy: { createdAt: 'asc' },
   },
-  // Organizer name for the "Organisé par" section — nothing else about the
-  // organizer (avatar/followers/verification) exists as real data yet, the
-  // frontend fills the rest with placeholders until a real profile module
-  // exists.
+  // Organizer identity for the "Organisé par" panel and its link to the full
+  // public profile at /organizers/:slug (see organizations/public-organizer.controller.ts).
+  // No avatar/description field exists on Organization — the profile stays
+  // text/initials-based.
   organization: {
-    select: { name: true },
+    select: { name: true, slug: true, isVerified: true },
   },
 } satisfies Prisma.EventSelect;
 
@@ -277,6 +277,10 @@ export class EventsService {
     // re-notify every buyer a second time.
     if (dto.status === EventStatus.CANCELLED && event.status !== EventStatus.CANCELLED) {
       await this.notificationsService.notifyEventCancelled(eventId);
+    }
+
+    if (isPublishing) {
+      await this.notificationsService.notifyOrganizerSubscribers(organizationId, eventId);
     }
 
     return updated;

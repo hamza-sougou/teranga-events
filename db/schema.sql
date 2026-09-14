@@ -166,6 +166,14 @@ CREATE TABLE organizations (
   is_verified       BOOLEAN NOT NULL DEFAULT FALSE, -- KYC organisateur
   suspended_at      TIMESTAMPTZ, -- gel Super Admin (fraude avérée) : bloque toute action org-scopée + achat + visibilité publique, voir OrganizationRolesGuard
   payout_phone_number VARCHAR(20), -- numéro mobile money pour le reversement PayDunya (API Déboursement, section 8B)
+  -- Profil public organisateur (/organizers/[slug]) : avatar et couverture
+  -- sont chacun un slot unique (pas une liste comme event_media) — clé de
+  -- stockage R2 + URL publique par image, NULL = fallback frontend par défaut.
+  avatar_storage_key TEXT,
+  avatar_image_url  TEXT,
+  cover_storage_key TEXT,
+  cover_image_url   TEXT,
+  bio               VARCHAR(500),
   created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at        TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -185,6 +193,18 @@ CREATE TABLE organization_members (
 );
 
 CREATE INDEX idx_org_members_org ON organization_members (organization_id);
+
+-- Liste de diffusion email du profil public d'un organisateur
+-- (/organizers/[slug]) — pas un compte participant, aucun mot de passe ni
+-- session. L'id sert directement de token de désabonnement.
+CREATE TABLE organizer_subscriptions (
+  id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  organization_id   UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  email             TEXT NOT NULL,
+  created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+
+  UNIQUE (organization_id, email)
+);
 
 
 -- ============================================================
@@ -545,14 +565,20 @@ CREATE INDEX idx_scans_ticket ON scans (ticket_id);
 -- ============================================================
 
 CREATE TABLE notifications (
-  id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id           UUID REFERENCES users(id),
-  order_id          UUID REFERENCES orders(id),
-  channel           notification_channel NOT NULL,
-  type              VARCHAR(50) NOT NULL,  -- order_confirmation, event_reminder, cancellation...
-  status            notification_status NOT NULL DEFAULT 'pending',
-  sent_at           TIMESTAMPTZ,
-  created_at        TIMESTAMPTZ NOT NULL DEFAULT now()
+  id                          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id                     UUID REFERENCES users(id),
+  order_id                    UUID REFERENCES orders(id),
+  -- Contexte pour type = 'organizer_new_event' : le destinataire est un
+  -- OrganizerSubscription (pas un user), event_id porte le contexte de
+  -- rendu du message. ON DELETE CASCADE : un désabonnement supprime aussi
+  -- toute notification encore en attente pour cet abonné.
+  event_id                    UUID REFERENCES events(id),
+  organizer_subscription_id   UUID REFERENCES organizer_subscriptions(id) ON DELETE CASCADE,
+  channel                     notification_channel NOT NULL,
+  type                        VARCHAR(50) NOT NULL,  -- order_confirmation, event_reminder, cancellation, organizer_new_event...
+  status                      notification_status NOT NULL DEFAULT 'pending',
+  sent_at                     TIMESTAMPTZ,
+  created_at                  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 

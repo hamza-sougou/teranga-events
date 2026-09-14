@@ -211,31 +211,31 @@ enum PromotionType {
 // ============================================================
 
 model User {
-  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  id                             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   // Nullable since phone-auth step 1 (PROGRESS.md) — a phone-only account
   // has no email. chk_users_auth_method (db/schema.sql, not expressible
   // here) enforces "email OR phoneNumber, always at least one".
-  email        String?  @db.Text
+  email                          String?   @db.Text
   // Generic contact field, unrelated to auth — never used as a login
   // identifier, never verified. Distinct from phoneNumber below.
-  phone        String?  @db.VarChar(20)
+  phone                          String?   @db.VarChar(20)
   // Auth identifier (E.164), mirrors email's role — see chk_users_auth_method.
-  phoneNumber  String?  @unique(map: "idx_users_phone_number") @map("phone_number") @db.VarChar(20)
-  passwordHash String?  @map("password_hash") @db.Text
+  phoneNumber                    String?   @unique(map: "idx_users_phone_number") @map("phone_number") @db.VarChar(20)
+  passwordHash                   String?   @map("password_hash") @db.Text
   // TRUE for every real account (a real password or a Google identity).
   // FALSE only for a team-invite placeholder (TeamsService.createPlaceholderUser)
   // whose passwordHash is an unusable random value — the marker that gates
   // POST /auth/activate-invitation so it can never double as an
   // unauthenticated password reset on a real account.
-  passwordSet  Boolean  @default(true) @map("password_set")
-  googleId     String?  @unique @map("google_id") @db.Text
-  fullName     String   @map("full_name") @db.VarChar(150)
-  isSuperAdmin Boolean  @default(false) @map("is_super_admin")
-  isActive     Boolean  @default(true) @map("is_active")
-  emailVerifiedAt DateTime? @map("email_verified_at") @db.Timestamptz(6)
-  phoneVerifiedAt DateTime? @map("phone_verified_at") @db.Timestamptz(6)
-  termsAcceptedAt DateTime? @map("terms_accepted_at") @db.Timestamptz(6)
-  marketingOptIn  Boolean   @default(false) @map("marketing_opt_in")
+  passwordSet                    Boolean   @default(true) @map("password_set")
+  googleId                       String?   @unique @map("google_id") @db.Text
+  fullName                       String    @map("full_name") @db.VarChar(150)
+  isSuperAdmin                   Boolean   @default(false) @map("is_super_admin")
+  isActive                       Boolean   @default(true) @map("is_active")
+  emailVerifiedAt                DateTime? @map("email_verified_at") @db.Timestamptz(6)
+  phoneVerifiedAt                DateTime? @map("phone_verified_at") @db.Timestamptz(6)
+  termsAcceptedAt                DateTime? @map("terms_accepted_at") @db.Timestamptz(6)
+  marketingOptIn                 Boolean   @default(false) @map("marketing_opt_in")
   emailVerificationCodeHash      String?   @map("email_verification_code_hash") @db.Text
   emailVerificationCodeExpiresAt DateTime? @map("email_verification_code_expires_at") @db.Timestamptz(6)
   emailVerificationAttempts      Int       @default(0) @map("email_verification_attempts")
@@ -249,24 +249,24 @@ model User {
   // CHECK (totp_secret IS NOT NULL OR totp_enabled_at IS NULL) —
   // chk_users_totp_enabled_requires_secret — hand-maintained in db/schema.sql,
   // not enforced by Prisma.
-  totpSecret               String?   @map("totp_secret") @db.Text
-  totpEnabledAt            DateTime? @map("totp_enabled_at") @db.Timestamptz(6)
-  totpRecoveryCodeHashes   String[]  @default([]) @map("totp_recovery_code_hashes")
-  totpFailedAttempts       Int       @default(0) @map("totp_failed_attempts")
-  totpLockedUntil          DateTime? @map("totp_locked_until") @db.Timestamptz(6)
-  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt    DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  totpSecret                     String?   @map("totp_secret") @db.Text
+  totpEnabledAt                  DateTime? @map("totp_enabled_at") @db.Timestamptz(6)
+  totpRecoveryCodeHashes         String[]  @default([]) @map("totp_recovery_code_hashes")
+  totpFailedAttempts             Int       @default(0) @map("totp_failed_attempts")
+  totpLockedUntil                DateTime? @map("totp_locked_until") @db.Timestamptz(6)
+  createdAt                      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                      DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  ownedOrganizations Organization[]       @relation("OrganizationOwner")
-  memberships        OrganizationMember[] @relation("MemberUser")
-  invitedMemberships OrganizationMember[] @relation("MemberInviter")
-  createdEvents      Event[]              @relation("EventCreator")
-  createdEventPromotions EventPromotion[] @relation("EventPromotionCreator")
-  ordersAsBuyer      Order[]              @relation("OrderBuyer")
-  ordersAsSeller     Order[]              @relation("OrderSeller")
-  scans              Scan[]               @relation("ScanController")
-  notifications      Notification[]
-  auditLogs          AuditLog[]           @relation("AuditActor")
+  ownedOrganizations     Organization[]       @relation("OrganizationOwner")
+  memberships            OrganizationMember[] @relation("MemberUser")
+  invitedMemberships     OrganizationMember[] @relation("MemberInviter")
+  createdEvents          Event[]              @relation("EventCreator")
+  createdEventPromotions EventPromotion[]     @relation("EventPromotionCreator")
+  ordersAsBuyer          Order[]              @relation("OrderBuyer")
+  ordersAsSeller         Order[]              @relation("OrderSeller")
+  scans                  Scan[]               @relation("ScanController")
+  notifications          Notification[]
+  auditLogs              AuditLog[]           @relation("AuditActor")
 
   // Case-insensitive uniqueness enforced by idx_users_email_lower
   // (UNIQUE INDEX ... (lower(email))) in db/schema.sql — a functional index,
@@ -281,27 +281,50 @@ model User {
 // ============================================================
 
 model Organization {
-  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  name         String   @db.VarChar(200)
-  slug         String   @unique @db.VarChar(100)
-  ownerUserId  String   @map("owner_user_id") @db.Uuid
-  contactEmail String?  @map("contact_email") @db.Text
-  contactPhone String?  @map("contact_phone") @db.VarChar(20)
-  isVerified   Boolean  @default(false) @map("is_verified")
-  suspendedAt  DateTime? @map("suspended_at") @db.Timestamptz(6)
-  payoutPhoneNumber String? @map("payout_phone_number") @db.VarChar(20)
-  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt    DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name              String    @db.VarChar(200)
+  slug              String    @unique @db.VarChar(100)
+  ownerUserId       String    @map("owner_user_id") @db.Uuid
+  contactEmail      String?   @map("contact_email") @db.Text
+  contactPhone      String?   @map("contact_phone") @db.VarChar(20)
+  isVerified        Boolean   @default(false) @map("is_verified")
+  suspendedAt       DateTime? @map("suspended_at") @db.Timestamptz(6)
+  payoutPhoneNumber String?   @map("payout_phone_number") @db.VarChar(20)
+  avatarStorageKey  String?   @map("avatar_storage_key") @db.Text
+  avatarImageUrl    String?   @map("avatar_image_url") @db.Text
+  coverStorageKey   String?   @map("cover_storage_key") @db.Text
+  coverImageUrl     String?   @map("cover_image_url") @db.Text
+  bio               String?   @map("bio") @db.VarChar(500)
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  owner         User                 @relation("OrganizationOwner", fields: [ownerUserId], references: [id], onDelete: Restrict)
-  members       OrganizationMember[]
-  events        Event[]
-  promoCodes    PromoCode[]
-  subscriptions Subscription[]
-  auditLogs     AuditLog[]
-  payouts       Payout[]
+  owner                  User                    @relation("OrganizationOwner", fields: [ownerUserId], references: [id], onDelete: Restrict)
+  members                OrganizationMember[]
+  events                 Event[]
+  promoCodes             PromoCode[]
+  subscriptions          Subscription[]
+  organizerSubscriptions OrganizerSubscription[]
+  auditLogs              AuditLog[]
+  payouts                Payout[]
 
   @@map("organizations")
+}
+
+// Liste de diffusion email d'un organisateur (profil public
+// /organizers/[slug]) — pas un compte participant : aucun mot de passe,
+// aucune session. L'id sert directement de token de désabonnement (déjà
+// un UUID imprévisible et unique), donc pas de colonne dédiée.
+model OrganizerSubscription {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  email          String   @db.Text
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  organization  Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  notifications Notification[]
+
+  @@unique([organizationId, email])
+  @@map("organizer_subscriptions")
 }
 
 // Table de jonction : chaque employé (co-organisateur, vendeur, contrôleur,
@@ -389,6 +412,7 @@ model Event {
   media         EventMedia[]
   dressCodes    EventDressCode[]
   promotions    EventPromotion[]
+  notifications Notification[]
 
   // CHECK (end_at > start_at), CHECK ((latitude IS NULL) = (longitude IS NULL))
   // — chk_events_lat_lng_paired, see db/schema.sql, not enforced by Prisma
@@ -542,24 +566,24 @@ model PromoCode {
 // ============================================================
 
 model Order {
-  id          String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  eventId     String      @map("event_id") @db.Uuid
-  buyerUserId String?     @map("buyer_user_id") @db.Uuid
-  buyerEmail  String      @map("buyer_email") @db.Text
-  buyerPhone  String?     @map("buyer_phone") @db.VarChar(20)
-  sellerId    String?     @map("seller_id") @db.Uuid
-  promoCodeId String?     @map("promo_code_id") @db.Uuid
-  status      OrderStatus @default(PENDING)
+  id               String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  eventId          String      @map("event_id") @db.Uuid
+  buyerUserId      String?     @map("buyer_user_id") @db.Uuid
+  buyerEmail       String      @map("buyer_email") @db.Text
+  buyerPhone       String?     @map("buyer_phone") @db.VarChar(20)
+  sellerId         String?     @map("seller_id") @db.Uuid
+  promoCodeId      String?     @map("promo_code_id") @db.Uuid
+  status           OrderStatus @default(PENDING)
   // Part organisateur et commission Zen Events (SPEC.md 5.5/5.6) ; totalAmount
   // reste le montant facturé au client et doit toujours égaler leur somme
   // (CHECK chk_orders_total_equals_parts, voir db/schema.sql, non enforced ici).
-  subtotalAmount   Decimal @map("subtotal_amount") @db.Decimal(12, 2)
-  serviceFeeAmount Decimal @map("service_fee_amount") @db.Decimal(12, 2)
-  totalAmount Decimal     @map("total_amount") @db.Decimal(12, 2)
-  currency    String      @default("XOF") @db.Char(3)
-  expiresAt   DateTime    @map("expires_at") @db.Timestamptz(6)
-  createdAt   DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt   DateTime    @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  subtotalAmount   Decimal     @map("subtotal_amount") @db.Decimal(12, 2)
+  serviceFeeAmount Decimal     @map("service_fee_amount") @db.Decimal(12, 2)
+  totalAmount      Decimal     @map("total_amount") @db.Decimal(12, 2)
+  currency         String      @default("XOF") @db.Char(3)
+  expiresAt        DateTime    @map("expires_at") @db.Timestamptz(6)
+  createdAt        DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime    @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   event         Event          @relation(fields: [eventId], references: [id], onDelete: NoAction)
   buyer         User?          @relation("OrderBuyer", fields: [buyerUserId], references: [id], onDelete: NoAction)
@@ -690,17 +714,27 @@ model Scan {
 // ============================================================
 
 model Notification {
-  id        String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  userId    String?             @map("user_id") @db.Uuid
-  orderId   String?             @map("order_id") @db.Uuid
-  channel   NotificationChannel
-  type      String              @db.VarChar(50)
-  status    NotificationStatus  @default(PENDING)
-  sentAt    DateTime?           @map("sent_at") @db.Timestamptz(6)
-  createdAt DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+  id                      String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId                  String?             @map("user_id") @db.Uuid
+  orderId                 String?             @map("order_id") @db.Uuid
+  // Contexte pour le type 'organizer_new_event' — le destinataire n'a ni
+  // compte ni session (OrganizerSubscription), donc userId/orderId restent
+  // nuls pour ce type et eventId porte le contexte de rendu du message.
+  eventId                 String?             @map("event_id") @db.Uuid
+  organizerSubscriptionId String?             @map("organizer_subscription_id") @db.Uuid
+  channel                 NotificationChannel
+  type                    String              @db.VarChar(50)
+  status                  NotificationStatus  @default(PENDING)
+  sentAt                  DateTime?           @map("sent_at") @db.Timestamptz(6)
+  createdAt               DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
 
-  user  User?  @relation(fields: [userId], references: [id], onDelete: NoAction)
-  order Order? @relation(fields: [orderId], references: [id], onDelete: NoAction)
+  user                  User?                  @relation(fields: [userId], references: [id], onDelete: NoAction)
+  order                 Order?                 @relation(fields: [orderId], references: [id], onDelete: NoAction)
+  event                 Event?                 @relation(fields: [eventId], references: [id], onDelete: NoAction)
+  // Désabonnement = suppression de la ligne OrganizerSubscription : une
+  // notification en attente pour cet abonné doit disparaître avec elle plutôt
+  // que d'être envoyée après coup.
+  organizerSubscription OrganizerSubscription? @relation(fields: [organizerSubscriptionId], references: [id], onDelete: Cascade)
 
   @@map("notifications")
 }

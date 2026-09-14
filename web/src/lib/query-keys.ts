@@ -30,6 +30,13 @@ export const queryKeys = {
   discoverLastChance: () => ['discover-last-chance'],
   discoverFree: () => ['discover-free'],
   publicEventsList: (filters?: { category?: string; q?: string; page?: number }) => ['public-events-list', filters],
+  publicOrganizer: (slug?: string) => ['public-organizer', slug],
+  publicOrganizerEvents: (slug?: string, when?: 'upcoming' | 'past', page?: number) => [
+    'public-organizer-events',
+    slug,
+    when,
+    page,
+  ],
   orderPreview: (eventId?: string, itemsKey?: string) => ['order-preview', eventId, itemsKey],
   publicOrder: (orderId?: string) => ['public-order', orderId],
   adminOrganizations: () => ['admin-organizations'],

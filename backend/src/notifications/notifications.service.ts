@@ -52,6 +52,24 @@ export class NotificationsService {
     });
   }
 
+  // Fan-out to every OrganizerSubscription email when an organization
+  // publishes an event — same createMany + cron-dispatch pattern as
+  // notifyEventCancelled, so a popular organizer's publish request never
+  // blocks on sending N emails synchronously.
+  async notifyOrganizerSubscribers(organizationId: string, eventId: string): Promise<void> {
+    const subscribers = await this.prisma.organizerSubscription.findMany({ where: { organizationId } });
+    if (subscribers.length === 0) return;
+
+    await this.prisma.notification.createMany({
+      data: subscribers.map((subscriber) => ({
+        eventId,
+        organizerSubscriptionId: subscriber.id,
+        channel: NotificationChannel.EMAIL,
+        type: 'organizer_new_event',
+      })),
+    });
+  }
+
   async notifyTeamInvitation(membershipId: string): Promise<void> {
     const membership = await this.prisma.organizationMember.findUnique({ where: { id: membershipId } });
     if (!membership) return;
@@ -87,7 +105,13 @@ export class NotificationsService {
 
     for (const notification of pending) {
       try {
-        const message = await this.renderMessage(notification.type, notification.orderId, notification.userId);
+        const message = await this.renderMessage(
+          notification.type,
+          notification.orderId,
+          notification.userId,
+          notification.eventId,
+          notification.organizerSubscriptionId,
+        );
         if (!message) {
           await this.markFailed(notification.id);
           continue;
@@ -121,6 +145,8 @@ export class NotificationsService {
     type: string,
     orderId: string | null,
     userId: string | null,
+    eventId: string | null,
+    organizerSubscriptionId: string | null,
   ): Promise<RenderedMessage | null> {
     const frontendUrl = this.configService.get<string>('frontendUrl');
 
@@ -196,6 +222,25 @@ export class NotificationsService {
       }
 
       return null;
+    }
+
+    if (type === 'organizer_new_event') {
+      if (!eventId || !organizerSubscriptionId) return null;
+      const [event, subscription] = await Promise.all([
+        this.prisma.event.findUnique({ where: { id: eventId }, include: { organization: true } }),
+        this.prisma.organizerSubscription.findUnique({ where: { id: organizerSubscriptionId } }),
+      ]);
+      // Either can be gone by dispatch time (event deleted, or the
+      // subscription's own row already cascaded away on unsubscribe) —
+      // treated the same as any other missing-context case: drop silently.
+      if (!event || !subscription) return null;
+
+      const unsubscribeUrl = `${frontendUrl}/unsubscribe?token=${subscription.id}`;
+      return {
+        to: subscription.email,
+        subject: `${event.organization.name} vient de publier un nouvel évènement`,
+        text: `"${event.name}" vient d'être publié par ${event.organization.name}. Voir l'évènement : ${frontendUrl}/events/${event.slug}\n\nNe plus recevoir ces emails : ${unsubscribeUrl}`,
+      };
     }
 
     return null;

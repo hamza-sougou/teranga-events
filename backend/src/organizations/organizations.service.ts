@@ -4,7 +4,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AuthService } from '../auth/auth.service';
 import { UpdateOrganizationDto } from './dto/update-organization.dto';
 
-const PROFILE_SELECT = {
+export const PROFILE_SELECT = {
   id: true,
   name: true,
   slug: true,
@@ -12,6 +12,9 @@ const PROFILE_SELECT = {
   contactPhone: true,
   payoutPhoneNumber: true,
   isVerified: true,
+  avatarImageUrl: true,
+  coverImageUrl: true,
+  bio: true,
 } as const;
 
 const ADMIN_LIST_SELECT = {

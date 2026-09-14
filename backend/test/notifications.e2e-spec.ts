@@ -55,7 +55,12 @@ describe('Notifications (e2e)', () => {
       const eventIds = (
         await prisma.event.findMany({ where: { organizationId: { in: organizations.map((o) => o.id) } } })
       ).map((e) => e.id);
-      await prisma.notification.deleteMany({ where: { OR: [{ userId: user.id }, { order: { eventId: { in: eventIds } } }] } });
+      // event_id has no ON DELETE on notifications (unlike organizer_subscription_id,
+      // which cascades) — deleted explicitly first, same FK-cascade-gotcha
+      // reasoning as the order/user branch below (CLAUDE.md "Working in this repo").
+      await prisma.notification.deleteMany({
+        where: { OR: [{ userId: user.id }, { order: { eventId: { in: eventIds } } }, { eventId: { in: eventIds } }] },
+      });
       await prisma.order.deleteMany({ where: { eventId: { in: eventIds } } });
       await prisma.payout.deleteMany({ where: { eventId: { in: eventIds } } });
       await prisma.organization.deleteMany({ where: { ownerUserId: user.id } });
@@ -266,6 +271,82 @@ describe('Notifications (e2e)', () => {
       where: { order: { eventId: emptyEvent.id } },
     });
     expect(noOrdersNotifs).toBe(0);
+  });
+
+  it('notifies every organizer subscriber once on publish, and never on a later no-op update', async () => {
+    const { organizationId, userId } = await registerOrganizer();
+    const unique = randomUUID();
+    const category = await prisma.eventCategory.findFirstOrThrow({ where: { isActive: true } });
+    const event = await eventsService.create(organizationId, userId, {
+      name: 'Festival de Test',
+      slug: `festival-de-test-${unique}`,
+      address: 'Route de la Corniche, Dakar',
+      categoryId: category.id,
+      startAt: '2027-03-01T18:00:00.000Z',
+      endAt: '2027-03-01T23:00:00.000Z',
+    });
+    await seedImage(event.id);
+    await seedTicketType(event.id);
+
+    const subscriberEmails = [`fan1-${unique}@example.com`, `fan2-${unique}@example.com`];
+    await prisma.organizerSubscription.createMany({
+      data: subscriberEmails.map((email) => ({ organizationId, email })),
+    });
+
+    await eventsService.update(organizationId, event.id, { status: EventStatus.PUBLISHED });
+
+    const notifications = await prisma.notification.findMany({
+      where: { eventId: event.id, type: 'organizer_new_event' },
+    });
+    expect(notifications).toHaveLength(2);
+    expect(notifications.every((n) => n.status === 'PENDING')).toBe(true);
+
+    const sendSpy = jest.spyOn(emailChannel, 'send').mockResolvedValue();
+    await notificationsService.sendPendingNotifications();
+    expect(sendSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        to: expect.stringContaining('@example.com'),
+        subject: expect.stringContaining('nouvel évènement'),
+        text: expect.stringContaining('/unsubscribe?token='),
+      }),
+    );
+
+    // A later update to the already-published event (no status transition)
+    // must not re-notify every subscriber a second time.
+    await eventsService.update(organizationId, event.id, { description: 'Mise à jour' });
+    const afterNoOpUpdate = await prisma.notification.count({
+      where: { eventId: event.id, type: 'organizer_new_event' },
+    });
+    expect(afterNoOpUpdate).toBe(2);
+  });
+
+  it('cascades a subscriber unsubscribe to any still-pending notification for them', async () => {
+    const { organizationId, userId } = await registerOrganizer();
+    const unique = randomUUID();
+    const category = await prisma.eventCategory.findFirstOrThrow({ where: { isActive: true } });
+    const event = await eventsService.create(organizationId, userId, {
+      name: 'Festival de Test',
+      slug: `festival-de-test-${unique}`,
+      address: 'Route de la Corniche, Dakar',
+      categoryId: category.id,
+      startAt: '2027-04-01T18:00:00.000Z',
+      endAt: '2027-04-01T23:00:00.000Z',
+    });
+    await seedImage(event.id);
+    await seedTicketType(event.id);
+    const subscription = await prisma.organizerSubscription.create({
+      data: { organizationId, email: `fan-${unique}@example.com` },
+    });
+
+    await eventsService.update(organizationId, event.id, { status: EventStatus.PUBLISHED });
+    await expect(
+      prisma.notification.findFirstOrThrow({ where: { organizerSubscriptionId: subscription.id } }),
+    ).resolves.toBeDefined();
+
+    await prisma.organizerSubscription.delete({ where: { id: subscription.id } });
+
+    const remaining = await prisma.notification.count({ where: { organizerSubscriptionId: subscription.id } });
+    expect(remaining).toBe(0);
   });
 
   it('creates one event_reminder per due order and never duplicates it', async () => {

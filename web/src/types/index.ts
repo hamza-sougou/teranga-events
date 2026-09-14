@@ -241,9 +241,18 @@ export interface PublicEvent {
   startAt: string;
   endAt: string;
   media: EventMedia[];
-  // Just the name — no real organizer profile (avatar/followers/verified
-  // status) exists yet, see components/public/organizer-panel.tsx.
-  organization: { name: string };
+  // No avatar/description field exists on Organization — see PublicOrganizerProfile.
+  organization: { name: string; slug: string; isVerified: boolean };
+}
+
+// GET /organizers/:slug — public organizer profile. No avatar/description
+// field on Organization, and deliberately no subscriber count (a low number
+// would discourage a new organizer more than a high one would build trust).
+export interface PublicOrganizerProfile {
+  slug: string;
+  name: string;
+  isVerified: boolean;
+  publishedEventCount: number;
 }
 
 // GET /events/:slug/ticket-types — a deliberately narrower projection than

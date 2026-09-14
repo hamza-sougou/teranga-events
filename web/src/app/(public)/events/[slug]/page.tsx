@@ -172,7 +172,11 @@ export default function EventPage() {
               )}
             </Panel>
 
-            <OrganizerPanel organizerName={event.organization.name} />
+            <OrganizerPanel
+              organizationSlug={event.organization.slug}
+              organizationName={event.organization.name}
+              isVerified={event.organization.isVerified}
+            />
           </div>
 
           <div className="order-first lg:order-none">
