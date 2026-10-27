@@ -1,9 +1,0 @@
-{
-  "permissions": {
-    "defaultMode": "bypassPermissions",
-    "allow": [
-      "Read(//tmp/**)",
-      "Bash(PGPASSWORD=pgadmin4545 psql -h localhost -p 5432 -U postgres -d event_manager -t -c \"SELECT o.id, o.owner_user_id, u.email FROM organizations o JOIN users u ON u.id = o.owner_user_id WHERE u.email IN \\('$\\(cat /tmp/email1.txt\\)', '$\\(cat /tmp/email2.txt\\)'\\);\")"
-    ]
-  }
-}
